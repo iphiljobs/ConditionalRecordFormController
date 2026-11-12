@@ -1,0 +1,85 @@
+<template>
+    <lightning-card title={title}>
+        <div class="slds-p-horizontal_medium slds-p-bottom_medium">
+            <template lwc:if={description}>
+                <p class="slds-m-bottom_medium">{description}</p>
+            </template>
+
+            <div class="slds-grid slds-wrap slds-gutters">
+                <template for:each={visibleItems} for:item="item">
+                <div key={item.renderKey} class={item.columnClass}>
+                    <template lwc:if={item.isSection}>
+                        <section class="slds-p-top_medium slds-border_bottom" aria-label={item.heading}>
+                            <h2 class="slds-text-heading_small slds-m-bottom_x-small">{item.heading}</h2>
+                            <template lwc:if={item.description}>
+                                <p class="slds-m-bottom_small">{item.description}</p>
+                            </template>
+                        </section>
+                    </template>
+                    <template lwc:elseif={item.isText}>
+                        <p>{item.text}</p>
+                    </template>
+                    <template lwc:elseif={item.isAddress}>
+                        <lightning-input-address
+                            address-label={item.label}
+                            street-label={item.streetLabel}
+                            city-label={item.cityLabel}
+                            province-label={item.provinceLabel}
+                            country-label={item.countryLabel}
+                            postal-code-label={item.postalCodeLabel}
+                            street={item.address.street}
+                            city={item.address.city}
+                            province={item.address.province}
+                            country={item.address.country}
+                            postal-code={item.address.postalCode}
+                            country-options={item.countryOptions}
+                            province-options={item.provinceOptions}
+                            required={item.required}
+                            data-field={item.apiName}
+                            onchange={handleFieldChange}>
+                        </lightning-input-address>
+                    </template>
+                    <template lwc:elseif={item.isPicklist}>
+                        <lightning-combobox
+                            label={item.label}
+                            name={item.apiName}
+                            value={item.value}
+                            options={item.options}
+                            required={item.required}
+                            placeholder={item.placeholder}
+                            data-field={item.apiName}
+                            onchange={handleFieldChange}>
+                        </lightning-combobox>
+                    </template>
+                    <template lwc:else>
+                        <lightning-input
+                            type={item.type}
+                            label={item.label}
+                            name={item.apiName}
+                            value={item.value}
+                            checked={item.checked}
+                            required={item.required}
+                            placeholder={item.placeholder}
+                            min={item.min}
+                            max={item.max}
+                            step={item.step}
+                            data-field={item.apiName}
+                            onchange={handleFieldChange}>
+                        </lightning-input>
+                    </template>
+                </div>
+                </template>
+            </div>
+
+            <template lwc:if={showSubmitButton}>
+                <lightning-button
+                    class="slds-m-top_small"
+                    variant="brand"
+                    label={submitLabel}
+                    onclick={handleSubmit}
+                    disabled={isSubmitting}>
+                </lightning-button>
+            </template>
+        </div>
+    </lightning-card>
+</template>
