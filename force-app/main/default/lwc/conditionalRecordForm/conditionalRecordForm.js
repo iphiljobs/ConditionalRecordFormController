@@ -46,7 +46,7 @@ export default class ConditionalRecordForm extends LightningElement {
     @api title = 'Conditional Form';
     @api description;
     @api submitLabel = 'Save';
-    @api showSubmitButton = true;
+    showSubmitButton = true;
 
     clientFieldValues = [];
     isSubmitting = false;
