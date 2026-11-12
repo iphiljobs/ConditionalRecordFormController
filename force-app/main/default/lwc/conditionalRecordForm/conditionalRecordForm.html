@@ -8,7 +8,10 @@
             <div class="slds-grid slds-wrap slds-gutters">
                 <template for:each={visibleItems} for:item="item">
                 <div key={item.renderKey} class={item.columnClass}>
-                    <template lwc:if={item.isSection}>
+                    <template lwc:if={item.isSpacer}>
+                        <div aria-hidden="true"></div>
+                    </template>
+                    <template lwc:elseif={item.isSection}>
                         <section class="slds-p-top_medium slds-border_bottom" aria-label={item.heading}>
                             <h2 class="slds-text-heading_small slds-m-bottom_x-small">{item.heading}</h2>
                             <template lwc:if={item.description}>

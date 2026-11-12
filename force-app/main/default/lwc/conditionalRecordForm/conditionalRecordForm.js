@@ -105,12 +105,15 @@ export default class ConditionalRecordForm extends LightningElement {
                 const kind = item.kind || (item.apiName ? 'field' : 'text');
                 const isField = kind === 'field' && Boolean(item.apiName);
                 const isCheckbox = isField && item.type === 'checkbox';
-                const fullWidth = kind !== 'field' || item.type === 'address' ||
-                    item.fullWidth === true || item.span === 2 || this._config.columns === 1;
+                const isSpacer = kind === 'spacer';
+                const fullWidth = kind === 'section' || kind === 'text' ||
+                    (isField && (item.type === 'address' || item.fullWidth === true || item.span === 2)) ||
+                    (isSpacer && item.span === 2) || this._config.columns === 1;
                 return {
                     ...item,
                     kind,
                     renderKey: item.key || item.apiName || `item-${index}`,
+                    isSpacer,
                     columnClass: fullWidth
                         ? 'slds-col slds-size_1-of-1 slds-m-bottom_small'
                         : 'slds-col slds-size_1-of-1 slds-medium-size_1-of-2 slds-m-bottom_small',
@@ -144,6 +147,7 @@ export default class ConditionalRecordForm extends LightningElement {
                     options: Array.isArray(item.options) ? item.options : []
                 };
             })
+            .filter((item) => item.kind !== 'spacer' || this._config.columns === 2)
             .filter((item) => this.isItemVisible(item));
     }
 
