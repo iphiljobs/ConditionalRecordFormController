@@ -91,25 +91,25 @@ public with sharing class ConditionalRecordFormController {
         }
 
         switch on fieldType {
-            when Schema.DisplayType.Boolean {
+            when Boolean {
                 return Boolean.valueOf(value);
             }
-            when Schema.DisplayType.Date {
+            when Date {
                 return Date.valueOf(value);
             }
-            when Schema.DisplayType.DateTime {
+            when DateTime {
                 return parseDateTime(value);
             }
-            when Schema.DisplayType.Time {
-                return Time.valueOf(value);
+            when Time {
+                return parseTime(value);
             }
-            when Schema.DisplayType.Integer {
+            when Integer {
                 return Integer.valueOf(value);
             }
-            when Schema.DisplayType.Double, Schema.DisplayType.Currency, Schema.DisplayType.Percent {
+            when Double, Currency, Percent {
                 return Decimal.valueOf(value);
             }
-            when Schema.DisplayType.Reference {
+            when Reference {
                 return Id.valueOf(value);
             }
             when else {
@@ -125,5 +125,31 @@ public with sharing class ConditionalRecordFormController {
         Integer offsetIndex = normalized.indexOf('+');
         if (offsetIndex >= 0) normalized = normalized.substring(0, offsetIndex);
         return Datetime.valueOfGmt(normalized);
+    }
+
+    private static Time parseTime(String value) {
+        String normalized = value.replace('Z', '');
+        List<String> parts = normalized.split(':');
+        if (parts.size() < 2 || parts.size() > 3) {
+            throw new AuraHandledException('Time value must use HH:mm or HH:mm:ss format.');
+        }
+
+        Integer hour = Integer.valueOf(parts[0]);
+        Integer minute = Integer.valueOf(parts[1]);
+        Integer second = 0;
+        Integer millisecond = 0;
+        if (parts.size() == 3) {
+            String secondPart = parts[2];
+            Integer fractionIndex = secondPart.indexOf('.');
+            if (fractionIndex >= 0) {
+                String fraction = secondPart.substring(fractionIndex + 1);
+                secondPart = secondPart.substring(0, fractionIndex);
+                if (fraction.length() > 3) fraction = fraction.substring(0, 3);
+                while (fraction.length() < 3) fraction += '0';
+                if (!String.isBlank(fraction)) millisecond = Integer.valueOf(fraction);
+            }
+            second = Integer.valueOf(secondPart);
+        }
+        return Time.newInstance(hour, minute, second, millisecond);
     }
 }
