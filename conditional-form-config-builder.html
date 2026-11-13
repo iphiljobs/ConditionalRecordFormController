@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Conditional Form LWC Config Builder</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#172b4d;background:#f4f7fb;font-synthesis:none}
+    *{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}
+    .top{background:linear-gradient(120deg,#123a70,#1467a8);color:#fff;padding:24px max(22px,calc((100vw - 1420px)/2))}
+    .top h1{font-size:clamp(1.35rem,3vw,2rem);margin:0 0 6px}.top p{margin:0;color:#dcecff;max-width:850px;line-height:1.45}
+    main{max-width:1420px;margin:22px auto;padding:0 20px 38px;display:grid;grid-template-columns:minmax(0,1.12fr) minmax(360px,.88fr);gap:20px;align-items:start}
+    .stack{display:grid;gap:16px}.panel,.item-card{background:#fff;border:1px solid #dbe3ed;border-radius:12px;box-shadow:0 2px 7px #18395a0a}
+    .panel{padding:18px}.panel h2{font-size:1.08rem;margin:0 0 14px}.panel h3{font-size:.98rem;margin:18px 0 10px}
+    .subtle{font-size:.88rem;color:#5c6f85;line-height:1.45;margin:-6px 0 14px}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.grid.one{grid-template-columns:1fr}
+    .control{display:flex;flex-direction:column;gap:5px;min-width:0}.control label{font-size:.82rem;font-weight:650;color:#30455f}
+    input[type=text],input[type=number],select,textarea{border:1px solid #bdc9d6;border-radius:7px;padding:9px 10px;background:#fff;color:#172b4d;width:100%;min-height:39px}
+    textarea{min-height:76px;resize:vertical;line-height:1.4}input:focus,select:focus,textarea:focus{outline:3px solid #c7e4ff;border-color:#1674bd}
+    .check{display:flex;align-items:center;gap:8px;min-height:39px;font-size:.9rem}.check input{width:17px;height:17px;accent-color:#1268a8}
+    .toolbar{display:flex;gap:8px;flex-wrap:wrap}.btn{border:1px solid #a8b8c8;background:#fff;color:#163b61;padding:8px 11px;border-radius:7px;font-weight:650;cursor:pointer}
+    .btn:hover{background:#f0f7fd}.btn.primary{background:#1268a8;border-color:#1268a8;color:#fff}.btn.primary:hover{background:#0d568e}.btn.danger{color:#a52a2a}.btn.small{font-size:.8rem;padding:6px 9px}
+    .item-list,.rule-list{display:grid;gap:12px;margin-top:14px}.item-card{padding:14px}.item-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.item-head strong{font-size:.95rem}.item-head .toolbar{justify-content:flex-end}
+    .condition-box,.action-box{border:1px solid #dbe3ed;border-radius:8px;padding:11px;margin-top:9px;background:#fbfdff}.condition-row{display:grid;grid-template-columns:1.2fr 1fr 1.2fr auto;gap:8px;align-items:end}
+    .action-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.rule-card{border:1px solid #dbe3ed;border-radius:9px;padding:13px;background:#fcfdff}.rule-card+.rule-card{margin-top:12px}
+    .rule-title{font-weight:700;margin-bottom:6px}.hint{font-size:.78rem;color:#687b8e;margin-top:4px}.empty{color:#6b7e90;border:1px dashed #bdc9d6;padding:18px;border-radius:9px;text-align:center}
+    .preview{position:sticky;top:14px}.preview-top{display:flex;justify-content:space-between;align-items:center;gap:10px}.preview-top h2{margin:0}.preview-actions{display:flex;gap:7px;flex-wrap:wrap}
+    #jsonOutput{width:100%;min-height:68vh;font:12.5px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;background:#101c2b;color:#e6f2ff;border:1px solid #263d57;border-radius:9px;padding:14px;tab-size:2}
+    .status{min-height:20px;color:#176c3a;font-size:.84rem;margin-top:8px}.status.error{color:#ad2525}.footer-note{font-size:.8rem;color:#65788b;margin-top:10px;line-height:1.45}
+    @media(max-width:980px){main{grid-template-columns:1fr}.preview{position:static}#jsonOutput{min-height:430px}}
+    @media(max-width:600px){main{padding:0 12px 24px;margin-top:12px}.top{padding:20px 14px}.grid{grid-template-columns:1fr}.condition-row{grid-template-columns:1fr 1fr}.condition-row .value-control{grid-column:1/-1}.item-head{align-items:flex-start;flex-direction:column}.preview-top{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <header class="top">
+    <h1>Conditional Form LWC Config Builder</h1>
+    <p>Build a JSON configuration for the conditionalRecordForm component. Choose the layout, add fields and content, configure visibility, and define copy or clear rules. Everything runs in this browser tab.</p>
+  </header>
+  <main>
+    <div class="stack">
+      <section class="panel">
+        <h2>Form settings</h2>
+        <div class="grid">
+          <div class="control"><label for="title">Form title</label><input id="title" type="text" data-bind="title"></div>
+          <div class="control"><label for="submitLabel">Save button label</label><input id="submitLabel" type="text" data-bind="submitLabel"></div>
+          <div class="control"><label for="description">Description</label><textarea id="description" data-bind="description"></textarea></div>
+          <div class="grid one">
+            <div class="control"><label for="columns">Columns</label><select id="columns" data-bind="columns"><option value="1">1 column</option><option value="2">2 columns</option></select></div>
+            <label class="check"><input type="checkbox" data-bind="showSubmitButton"> Show built-in Save button</label>
+            <div class="control"><label for="submissionMode">Submission mode</label><select id="submissionMode" data-bind="submissionMode"><option value="apex">Save through component Apex</option><option value="event">Dispatch formsubmit event to parent</option></select></div>
+            <label class="check"><input type="checkbox" data-bind="clearWhenHidden"> Clear hidden fields on submit</label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Form items</h2>
+        <p class="subtle">Items are rendered in this order. Fields, sections, text, and spacers can have visibility conditions.</p>
+        <div class="toolbar">
+          <button class="btn primary" data-action="add-item" data-kind="field">+ Field</button>
+          <button class="btn" data-action="add-item" data-kind="text">+ Text</button>
+          <button class="btn" data-action="add-item" data-kind="section">+ Section</button>
+          <button class="btn" data-action="add-item" data-kind="spacer">+ Spacer</button>
+        </div>
+        <div id="items" class="item-list"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Conditional value rules</h2>
+        <p class="subtle">Rules run after a controlling field or copy source changes. Copy can overwrite a target; clear writes null.</p>
+        <button class="btn primary" data-action="add-rule">+ Add value rule</button>
+        <div id="rules" class="rule-list"></div>
+      </section>
+    </div>
+
+    <aside class="panel preview">
+      <div class="preview-top">
+        <h2 id="outputHeading">Generated JSON</h2>
+        <div class="preview-actions">
+          <select id="outputFormat" aria-label="Output format"><option value="json">JSON</option><option value="module">JavaScript module</option></select>
+          <button class="btn primary" id="copyOutput">Copy output</button>
+          <button class="btn" id="downloadOutput">Download output</button>
+        </div>
+      </div>
+      <p id="outputHelp" class="subtle" style="margin:10px 0 12px">Paste JSON into the Experience Builder Form Configuration JSON property.</p>
+      <textarea id="jsonOutput" spellcheck="false" aria-label="Generated form configuration" readonly></textarea>
+      <div id="moduleInstructions" class="condition-box" hidden>
+        <strong>Use this module in the LWC</strong>
+        <p class="footer-note">Download the module as <code>conditionalRecordFormConfig.js</code> into the same LWC bundle folder. The component imports its default export with:</p>
+        <pre><code>import DEFAULT_FORM_CONFIG from './conditionalRecordFormConfig';</code></pre>
+        <p class="footer-note">The module supplies the default when the Experience Builder JSON property is blank. A configured Builder JSON value still takes precedence.</p>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="validation" class="footer-note"></div>
+      <p class="footer-note">Picklist and address option values use one entry per line in <code>label|value</code> format. Conditions use the same operators supported by the LWC.</p>
+    </aside>
+  </main>
+
+  <script>
+    const OPERATORS = ['equals','notEquals','contains','notContains','isBlank','isNotBlank','greaterThan','lessThan'];
+    const FIELD_TYPES = ['text','email','tel','number','date','time','datetime','checkbox','url','password','search','picklist','address'];
+    const config = {
+      title: 'Conditional Form', description: '', submitLabel: 'Save', columns: 1,
+      showSubmitButton: true, submissionMode: 'apex', clearWhenHidden: false,
+      items: [], valueRules: []
+    };
+    const itemsRoot = document.getElementById('items');
+    const rulesRoot = document.getElementById('rules');
+    const output = document.getElementById('jsonOutput');
+    const status = document.getElementById('status');
+    const validation = document.getElementById('validation');
+    let outputMode = 'json';
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const readPath = (path) => path.split('.').reduce((value, key) => value?.[key], config);
+    function writePath(path, value) {
+      const keys = path.split('.'); let target = config;
+      keys.slice(0, -1).forEach(key => { target = target[key]; });
+      target[keys[keys.length - 1]] = value;
+    }
+    const input = (label, path, value, type='text', extra='') => `<div class="control"><label>${escapeHtml(label)}</label><input type="${type}" data-bind="${escapeHtml(path)}" value="${escapeHtml(value)}" ${extra}></div>`;
+    const textarea = (label, path, value, placeholder='') => `<div class="control"><label>${escapeHtml(label)}</label><textarea data-bind="${escapeHtml(path)}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(value)}</textarea></div>`;
+    const select = (label, path, value, options) => `<div class="control"><label>${escapeHtml(label)}</label><select data-bind="${escapeHtml(path)}">${options.map(([v,t]) => `<option value="${escapeHtml(v)}" ${String(value)===String(v)?'selected':''}>${escapeHtml(t)}</option>`).join('')}</select></div>`;
+    const checkbox = (label, path, checked) => `<label class="check"><input type="checkbox" data-bind="${escapeHtml(path)}" ${checked?'checked':''}>${escapeHtml(label)}</label>`;
+    function optionText(options) { return (options || []).map(o => `${o.label ?? ''}|${o.value ?? ''}`).join('\n'); }
+    function parseOptions(text) {
+      return String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+        const split = line.indexOf('|');
+        const label = split < 0 ? line : line.slice(0, split).trim();
+        const value = split < 0 ? line : line.slice(split + 1).trim();
+        return {label, value};
+      });
+    }
+    function newCondition() { return {field:'', operator:'equals', value:''}; }
+    function ensureConditions(owner, key) { if (!Array.isArray(owner[key])) owner[key] = owner[key] ? [owner[key]] : []; return owner[key]; }
+    function conditionsEditor(owner, path, conditions, logic='AND') {
+      const rows = conditions.length ? conditions.map((condition, index) => `
+        <div class="condition-box"><div class="condition-row">
+          ${input('Field API name', `${path}.${index}.field`, condition.field || '')}
+          ${select('Operator', `${path}.${index}.operator`, condition.operator || 'equals', OPERATORS.map(op=>[op,op]))}
+          ${input('Value', `${path}.${index}.value`, condition.value ?? '')}
+          <button class="btn small danger" data-action="remove-condition" data-path="${escapeHtml(path)}" data-index="${index}">Remove</button>
+        </div></div>`).join('') : '<div class="hint">No condition: this item or rule has no conditional trigger.</div>';
+      const logicControl = conditions.length > 1 ? select('Match conditions', `${path}Logic`, logic, [['AND','All (AND)'],['OR','Any (OR)']]) : '';
+      return `<h3>Conditions</h3>${logicControl}${rows}<button class="btn small" data-action="add-condition" data-path="${escapeHtml(path)}">+ Add condition</button>`;
+    }
+    function itemCard(item, index) {
+      const base = `items.${index}`; const kind = item.kind || 'field';
+      const header = `<div class="item-head"><strong>${index+1}. ${escapeHtml(kind[0].toUpperCase()+kind.slice(1))}${item.label ? ` · ${escapeHtml(item.label)}` : ''}</strong><div class="toolbar"><button class="btn small" data-action="move-item" data-index="${index}" data-delta="-1" aria-label="Move up">↑</button><button class="btn small" data-action="move-item" data-index="${index}" data-delta="1" aria-label="Move down">↓</button><button class="btn small danger" data-action="remove-item" data-index="${index}">Delete</button></div></div>`;
+      let body = `<div class="grid">${select('Item kind', `${base}.kind`, kind, [['field','Field'],['text','Text'],['section','Section'],['spacer','Spacer']])}`;
+      if (kind === 'field') {
+        body += `${input('Field API name (or address group key)', `${base}.apiName`, item.apiName || '')}${input('Label', `${base}.label`, item.label || '')}`;
+        body += `${select('Input type', `${base}.type`, item.type || 'text', FIELD_TYPES.map(t=>[t,t]))}`;
+        body += `${input('Unique item key (optional)', `${base}.key`, item.key || '')}${input('Section key (optional)', `${base}.sectionKey`, item.sectionKey || '')}`;
+        body += `${input('Placeholder', `${base}.placeholder`, item.placeholder || '')}${input('Default value', `${base}.defaultValue`, item.defaultValue ?? '')}`;
+        body += `${input('Minimum (optional)', `${base}.min`, item.min ?? '', 'text')}${input('Maximum (optional)', `${base}.max`, item.max ?? '', 'text')}${input('Step (optional)', `${base}.step`, item.step ?? '', 'text')}`;
+        body += `<div class="control"><label>Layout</label><div>${checkbox('Required',`${base}.required`,item.required)}${checkbox('Full width',`${base}.fullWidth`,item.fullWidth)}${select('Column span',`${base}.span`,item.span || 1,[['1','1 column'],['2','2 columns']])}</div></div>`;
+        if (item.type === 'picklist') body += textarea('Picklist options (label|value per line)',`${base}.optionsText`,item.optionsText ?? optionText(item.options),'Individual|Individual');
+        if (item.type === 'address') {
+          item.apiNames ||= {street:'',city:'',province:'',postalCode:'',country:''};
+          body += `<div class="grid one"><strong>Address field mappings</strong></div>`;
+          body += input('Street field API name',`${base}.apiNames.street`,item.apiNames.street || '');
+          body += input('City field API name',`${base}.apiNames.city`,item.apiNames.city || '');
+          body += input('State / province field API name',`${base}.apiNames.province`,item.apiNames.province || '');
+          body += input('Postal code field API name',`${base}.apiNames.postalCode`,item.apiNames.postalCode || '');
+          body += input('Country field API name',`${base}.apiNames.country`,item.apiNames.country || '');
+          body += input('Street label',`${base}.streetLabel`,item.streetLabel || 'Street');
+          body += input('City label',`${base}.cityLabel`,item.cityLabel || 'City');
+          body += input('State / province label',`${base}.provinceLabel`,item.provinceLabel || 'State/Province');
+          body += input('Postal code label',`${base}.postalCodeLabel`,item.postalCodeLabel || 'Postal Code');
+          body += input('Country label',`${base}.countryLabel`,item.countryLabel || 'Country');
+          body += textarea('Country options (label|value per line)',`${base}.countryOptionsText`,item.countryOptionsText ?? optionText(item.countryOptions),'United States|United States');
+          body += textarea('State / province options (label|value per line)',`${base}.provinceOptionsText`,item.provinceOptionsText ?? optionText(item.provinceOptions),'California|California');
+        }
+      } else if (kind === 'text') {
+        body += `${input('Unique item key',`${base}.key`,item.key || '')}${textarea('Text content',`${base}.text`,item.text || '')}${input('Section key (optional)',`${base}.sectionKey`,item.sectionKey || '')}`;
+        body += `${checkbox('Full width',`${base}.fullWidth`,item.fullWidth)}${select('Column span',`${base}.span`,item.span || 1,[['1','1 column'],['2','2 columns']])}`;
+      } else if (kind === 'section') {
+        body += `${input('Unique section key',`${base}.key`,item.key || '')}${input('Heading',`${base}.heading`,item.heading || '')}${textarea('Section description (optional)',`${base}.description`,item.description || '')}`;
+      } else {
+        body += `${input('Unique item key',`${base}.key`,item.key || '')}${select('Column span',`${base}.span`,item.span || 1,[['1','1 column'],['2','2 columns']])}`;
+      }
+      body += `</div><div class="condition-box">${conditionsEditor(item,`${base}.visibleWhen`,ensureConditions(item,'visibleWhen'),item.visibleWhenLogic || 'AND')}</div>`;
+      return `<article class="item-card">${header}${body}</article>`;
+    }
+    function actionCard(action, ruleIndex, actionIndex) {
+      const path = `valueRules.${ruleIndex}.actions.${actionIndex}`;
+      let fields = select('Action',`${path}.type`,action.type || 'copy',[['copy','Copy a value'],['clear','Clear fields']]);
+      if ((action.type || 'copy') === 'copy') {
+        fields += input('Copy from field API name',`${path}.from`,action.from || '');
+        fields += input('Copy to field API name',`${path}.to`,action.to || '');
+        fields += `<div class="control"><label>Overwrite target</label>${checkbox('Replace target when it already has a value',`${path}.overwrite`,action.overwrite === true)}</div>`;
+      } else {
+        const names = action.fieldsText ?? (action.fields || []).join(', ');
+        fields += textarea('Field API names to clear (comma or line separated)',`${path}.fieldsText`,names,'Organization_Name__c, Organization_Tax_Id__c');
+      }
+      return `<div class="action-box"><div class="action-head"><strong>Action ${actionIndex+1}</strong><button class="btn small danger" data-action="remove-action" data-rule="${ruleIndex}" data-index="${actionIndex}">Remove</button></div><div class="grid">${fields}</div></div>`;
+    }
+    function renderItems() {
+      itemsRoot.innerHTML = config.items.length ? config.items.map(itemCard).join('') : '<div class="empty">No items yet. Add a field, text block, section, or spacer.</div>';
+    }
+    function renderRules() {
+      if (!config.valueRules.length) { rulesRoot.innerHTML = '<div class="empty">No value rules yet.</div>'; return; }
+      rulesRoot.innerHTML = config.valueRules.map((rule, index) => {
+        ensureConditions(rule,'when');
+        const conditions = conditionsEditor(rule,`valueRules.${index}.when`,rule.when,rule.whenLogic || 'AND');
+        const actions = (rule.actions || []).map((action, actionIndex)=>actionCard(action,index,actionIndex)).join('');
+        return `<article class="rule-card"><div class="item-head"><div class="rule-title">Rule ${index+1}</div><button class="btn small danger" data-action="remove-rule" data-index="${index}">Delete rule</button></div><div class="condition-box">${conditions}</div><h3>Actions</h3>${actions || '<div class="hint">Add at least one action.</div>'}<button class="btn small" data-action="add-action" data-rule="${index}">+ Add action</button></article>`;
+      }).join('');
+    }
+    function nonEmptyConditions(conditions) {
+      return (conditions || []).filter(c => c.field && c.operator).map(c => ({field:c.field,operator:c.operator,...(c.operator==='isBlank'||c.operator==='isNotBlank'?{}:{value:c.value ?? ''})}));
+    }
+    function parseDefault(value) {
+      if (value === '') return undefined;
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      if (/^-?(?:\d+\.?\d*|\.\d+)$/.test(value)) return Number(value);
+      return value;
+    }
+    function buildConfig() {
+      const result = {
+        title:config.title, description:config.description, submitLabel:config.submitLabel,
+        columns:Number(config.columns)===2?2:1,
+        showSubmitButton:Boolean(config.showSubmitButton), submissionMode:config.submissionMode,
+        clearWhenHidden:Boolean(config.clearWhenHidden),
+        items:config.items.map(item => {
+          const out={kind:item.kind};
+          if(item.key) out.key=item.key;
+          if(item.kind==='field') {
+            Object.assign(out,{apiName:item.apiName || '',label:item.label || '',type:item.type || 'text'});
+            if(item.sectionKey) out.sectionKey=item.sectionKey;
+            if(item.required) out.required=true;
+            if(item.placeholder) out.placeholder=item.placeholder;
+            const d=parseDefault(String(item.defaultValue ?? '')); if(d!==undefined) out.defaultValue=d;
+            ['min','max','step'].forEach(k=>{if(item[k]!==''&&item[k]!==undefined) out[k]=Number.isFinite(Number(item[k]))?Number(item[k]):item[k];});
+            if(item.fullWidth) out.fullWidth=true;
+            if(Number(item.span)===2) out.span=2;
+            if(item.type==='picklist') out.options=parseOptions(item.optionsText ?? optionText(item.options));
+            if(item.type==='address') {
+              out.apiNames={}; ['street','city','province','postalCode','country'].forEach(k=>{if(item.apiNames?.[k]) out.apiNames[k]=item.apiNames[k];});
+              ['streetLabel','cityLabel','provinceLabel','postalCodeLabel','countryLabel'].forEach(k=>{if(item[k]) out[k]=item[k];});
+              const countries=parseOptions(item.countryOptionsText ?? optionText(item.countryOptions));
+              const provinces=parseOptions(item.provinceOptionsText ?? optionText(item.provinceOptions));
+              if(countries.length) out.countryOptions=countries;
+              if(provinces.length) out.provinceOptions=provinces;
+            }
+          } else if(item.kind==='text') {
+            out.text=item.text || '';
+            if(item.sectionKey) out.sectionKey=item.sectionKey;
+            if(item.fullWidth) out.fullWidth=true;
+            if(Number(item.span)===2) out.span=2;
+          } else if(item.kind==='section') {
+            out.heading=item.heading || '';
+            if(item.description) out.description=item.description;
+          } else if(item.kind==='spacer' && Number(item.span)===2) out.span=2;
+          const conditions=nonEmptyConditions(item.visibleWhen);
+          if(conditions.length) {
+            out.visibleWhen=conditions.length===1?conditions[0]:conditions;
+            if(conditions.length>1 && item.visibleWhenLogic==='OR') out.visibleWhenLogic='OR';
+          }
+          return out;
+        }),
+        valueRules:config.valueRules.map(rule=>{
+          const when=nonEmptyConditions(rule.when);
+          const actions=(rule.actions||[]).flatMap(action=>{
+            if(action.type==='copy' && action.from && action.to) return [{type:'copy',from:action.from,to:action.to,...(action.overwrite?{overwrite:true}:{})}];
+            if(action.type==='clear') {
+              const fields=String(action.fieldsText ?? (action.fields||[]).join(',')).split(/[\n,]/).map(x=>x.trim()).filter(Boolean);
+              if(fields.length) return [{type:'clear',fields}];
+            }
+            return [];
+          });
+          if(!when.length||!actions.length) return null;
+          return {when:when.length===1?when[0]:when,...(when.length>1&&rule.whenLogic==='OR'?{whenLogic:'OR'}:{}),actions};
+        }).filter(Boolean)
+      };
+      return result;
+    }
+    function updateOutput() {
+      document.querySelectorAll('[data-bind]').forEach(el=>{
+        const path=el.dataset.bind;
+        const value=el.type==='checkbox'?el.checked:el.value;
+        writePath(path,value);
+      });
+      const configJson=JSON.stringify(buildConfig(),null,2);
+      output.value=outputMode==='module'?`export default ${configJson};\n`:`${configJson}\n`;
+      document.getElementById('outputHeading').textContent=outputMode==='module'?'Generated JavaScript module':'Generated JSON';
+      document.getElementById('outputHelp').textContent=outputMode==='module'
+        ?'Save this default-export module in the conditionalRecordForm LWC bundle.'
+        :'Paste JSON into the Experience Builder Form Configuration JSON property.';
+      document.getElementById('moduleInstructions').hidden=outputMode!=='module';
+      const warnings=[];
+      config.items.forEach((item,i)=>{
+        if(item.kind==='field'&&!item.apiName) warnings.push(`Item ${i+1}: enter a field API name.`);
+        if(item.type==='address'&&item.kind==='field'&&!Object.values(item.apiNames||{}).some(Boolean)) warnings.push(`Item ${i+1}: map at least one address field.`);
+      });
+      config.valueRules.forEach((rule,i)=>{
+        if(!nonEmptyConditions(rule.when).length) warnings.push(`Rule ${i+1}: add a condition; incomplete rules are omitted from JSON.`);
+        if(!(rule.actions||[]).length) warnings.push(`Rule ${i+1}: add a complete action; incomplete rules are omitted from JSON.`);
+      });
+      validation.textContent=warnings.join(' ');
+    }
+    function render() { renderItems(); renderRules(); updateOutput(); }
+    document.addEventListener('input', event=>{ if(event.target.matches('[data-bind]')) updateOutput(); });
+    document.addEventListener('change', event=>{
+      if(!event.target.matches('[data-bind]')) return;
+      updateOutput();
+      const path=event.target.dataset.bind;
+      if(path.endsWith('.kind')||path.endsWith('.type')||path.endsWith('.operator')||/\.actions\.\d+\.type$/.test(path)) render();
+    });
+    document.addEventListener('click', event=>{
+      const button=event.target.closest('[data-action]'); if(!button) return;
+      const action=button.dataset.action;
+      if(action==='add-item') {
+        const kind=button.dataset.kind;
+        const item={kind,key:kind==='field'?'':`${kind}-${config.items.length+1}`};
+        if(kind==='field') Object.assign(item,{apiName:'',label:'',type:'text',required:false,visibleWhen:[]});
+        if(kind==='text') Object.assign(item,{text:'',visibleWhen:[]});
+        if(kind==='section') Object.assign(item,{heading:'',description:'',visibleWhen:[]});
+        if(kind==='spacer') Object.assign(item,{visibleWhen:[]});
+        config.items.push(item); render();
+      } else if(action==='remove-item') { config.items.splice(Number(button.dataset.index),1); render(); }
+      else if(action==='move-item') {
+        const i=Number(button.dataset.index), j=i+Number(button.dataset.delta);
+        if(j>=0&&j<config.items.length) [config.items[i],config.items[j]]=[config.items[j],config.items[i]];
+        render();
+      } else if(action==='add-condition') {
+        const list=readPath(button.dataset.path); list.push(newCondition()); render();
+      } else if(action==='remove-condition') {
+        const list=readPath(button.dataset.path); list.splice(Number(button.dataset.index),1); render();
+      } else if(action==='add-rule') { config.valueRules.push({when:[newCondition()],whenLogic:'AND',actions:[]}); render(); }
+      else if(action==='remove-rule') { config.valueRules.splice(Number(button.dataset.index),1); render(); }
+      else if(action==='add-action') { config.valueRules[Number(button.dataset.rule)].actions.push({type:'copy',from:'',to:'',overwrite:false}); render(); }
+      else if(action==='remove-action') { config.valueRules[Number(button.dataset.rule)].actions.splice(Number(button.dataset.index),1); render(); }
+    });
+    document.getElementById('outputFormat').addEventListener('change',event=>{outputMode=event.target.value;updateOutput();});
+    document.getElementById('copyOutput').addEventListener('click',async()=>{
+      try { await navigator.clipboard.writeText(output.value); status.textContent=`${outputMode==='module'?'JavaScript module':'JSON'} copied to clipboard.`; status.className='status'; }
+      catch { output.focus(); output.select(); const ok=document.execCommand('copy'); status.textContent=ok?'Output copied to clipboard.':'Select and copy the output manually.'; status.className=ok?'status':'status error'; }
+    });
+    document.getElementById('downloadOutput').addEventListener('click',()=>{
+      const moduleMode=outputMode==='module';
+      const blob=new Blob([output.value],{type:moduleMode?'text/javascript':'application/json'});
+      const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=moduleMode?'conditionalRecordFormConfig.js':'conditional-form-config.json'; a.click(); URL.revokeObjectURL(url);
+      status.textContent=`Downloaded ${a.download}.`; status.className='status';
+    });
+    document.querySelectorAll('[data-bind]').forEach(el=>{ if(el.type==='checkbox') el.checked=Boolean(readPath(el.dataset.bind)); else if(readPath(el.dataset.bind)!==undefined) el.value=readPath(el.dataset.bind); });
+    render();
+  </script>
+</body>
+</html>

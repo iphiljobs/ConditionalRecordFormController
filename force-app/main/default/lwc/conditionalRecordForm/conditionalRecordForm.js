@@ -2,6 +2,7 @@ import { LightningElement, api, wire } from 'lwc';
 import { getRecord, getFieldValue } from 'lightning/uiRecordApi';
 import saveRecord from '@salesforce/apex/ConditionalRecordFormController.saveRecord';
 import Toast from 'lightning/toast';
+import DEFAULT_FORM_CONFIG from './conditionalRecordFormConfig';
 
 const OPERATORS = new Set([
     'equals',
@@ -21,25 +22,6 @@ const INPUT_TYPES = new Set([
 
 const ADDRESS_PARTS = ['street', 'city', 'province', 'postalCode', 'country'];
 
-// Edit this object to define the form in source control. A non-empty
-// Form Configuration JSON value in Experience Builder overrides this config.
-const DEFAULT_FORM_CONFIG = {
-    title: 'Conditional Form',
-    description: '',
-    submitLabel: 'Save',
-    columns: 1,
-    clearWhenHidden: false,
-    items: [
-        // Example field item:
-        // {
-        //     kind: 'field',
-        //     apiName: 'My_Field__c',
-        //     label: 'My Field',
-        //     type: 'text'
-        // }
-    ]
-};
-
 export default class ConditionalRecordForm extends LightningElement {
     @api objectApiName;
     @api recordId;
@@ -47,12 +29,14 @@ export default class ConditionalRecordForm extends LightningElement {
     @api description;
     @api submitLabel = 'Save';
     showSubmitButton = true;
+    submissionMode = 'apex';
 
     clientFieldValues = [];
     isSubmitting = false;
-    _config = { items: [], clearWhenHidden: false };
+    _config = { items: [], clearWhenHidden: false, valueRules: [] };
     _formConfigJson;
     _createdRecordId;
+    _ruleClearedFields = new Set();
 
     @api
     get formConfigJson() {
@@ -80,6 +64,13 @@ export default class ConditionalRecordForm extends LightningElement {
             fieldApiName,
             value
         }));
+    }
+
+    // Parent components can call this when the built-in button is hidden.
+    // In Apex mode this saves the record; in event mode it emits formsubmit.
+    @api
+    submit() {
+        return this.handleSubmit();
     }
 
     get recordFields() {
@@ -178,8 +169,14 @@ export default class ConditionalRecordForm extends LightningElement {
             this._config = {
                 items,
                 clearWhenHidden: Boolean(parsed?.clearWhenHidden),
-                columns: Number(parsed?.columns) === 2 ? 2 : 1
+                columns: Number(parsed?.columns) === 2 ? 2 : 1,
+                showSubmitButton: parsed?.showSubmitButton !== false,
+                submissionMode: parsed?.submissionMode === 'event' ? 'event' : 'apex',
+                valueRules: Array.isArray(parsed?.valueRules) ? parsed.valueRules : []
             };
+            this._ruleClearedFields = new Set();
+            this.showSubmitButton = this._config.showSubmitButton;
+            this.submissionMode = this._config.submissionMode;
             this.title = parsed?.title || this.title;
             this.description = parsed?.description || this.description;
             this.submitLabel = parsed?.submitLabel || this.submitLabel;
@@ -193,7 +190,17 @@ export default class ConditionalRecordForm extends LightningElement {
             });
             this.values = defaults;
         } catch (error) {
-            this._config = { items: [], clearWhenHidden: false, columns: 1 };
+            this._config = {
+                items: [],
+                clearWhenHidden: false,
+                columns: 1,
+                showSubmitButton: true,
+                submissionMode: 'apex',
+                valueRules: []
+            };
+            this._ruleClearedFields = new Set();
+            this.showSubmitButton = true;
+            this.submissionMode = 'apex';
             this.showToast('Invalid form configuration', error.message, 'error');
         }
     }
@@ -210,12 +217,87 @@ export default class ConditionalRecordForm extends LightningElement {
                 if (fieldApiName) nextValues[fieldApiName] = address[part] || '';
             });
             this.values = nextValues;
+            this._ruleClearedFields = new Set(
+                [...this._ruleClearedFields].filter((name) => !Object.values(field.apiNames || {}).includes(name))
+            );
+            this.applyValueRules(Object.values(field.apiNames || {}).filter(Boolean));
             return;
         }
         const value = event.target.type === 'checkbox'
             ? event.target.checked
             : event.detail?.value ?? event.target.value;
         this.setClientValue(apiName, value);
+        this._ruleClearedFields.delete(apiName);
+        this.applyValueRules([apiName]);
+    }
+
+    applyValueRules(changedFieldApiNames) {
+        const rules = this._config.valueRules || [];
+        if (!rules.length) return;
+
+        const changedFields = new Set(changedFieldApiNames);
+        const currentValues = { ...this.values };
+        const executedRules = new Set();
+        let hasUpdates = true;
+        let passes = 0;
+
+        // Allow a value written by one rule to trigger a dependent rule, while
+        // ensuring each configured rule executes at most once per user change.
+        while (hasUpdates && passes <= rules.length) {
+            hasUpdates = false;
+            passes += 1;
+
+            rules.forEach((rule, ruleIndex) => {
+                if (executedRules.has(ruleIndex) || !rule || !Array.isArray(rule.actions)) return;
+                const whenConditions = Array.isArray(rule.when)
+                    ? rule.when
+                    : rule.when ? [rule.when] : [];
+                const dependencies = new Set(whenConditions.map((condition) => condition?.field).filter(Boolean));
+                rule.actions.forEach((action) => {
+                    if (action?.type === 'copy' && action.from) dependencies.add(action.from);
+                });
+                if (![...dependencies].some((field) => changedFields.has(field))) return;
+                if (!this.conditionsPass({
+                    visibleWhen: rule.when,
+                    visibleWhenLogic: rule.whenLogic
+                }, currentValues)) return;
+
+                executedRules.add(ruleIndex);
+                rule.actions.forEach((action) => {
+                    if (action?.type === 'copy' && action.from && action.to) {
+                        const sourceValue = Object.prototype.hasOwnProperty.call(currentValues, action.from)
+                            ? currentValues[action.from]
+                            : undefined;
+                        if (sourceValue === undefined) return;
+
+                        const targetValue = currentValues[action.to];
+                        const targetIsBlank = targetValue === null || targetValue === undefined ||
+                            String(targetValue).trim() === '';
+                        if (action.overwrite !== true && !targetIsBlank) return;
+
+                        const copiedValue = sourceValue === undefined ? null : sourceValue;
+                        if (targetValue !== copiedValue) {
+                            currentValues[action.to] = copiedValue;
+                            changedFields.add(action.to);
+                            this._ruleClearedFields.delete(action.to);
+                            hasUpdates = true;
+                        }
+                    } else if (action?.type === 'clear') {
+                        (Array.isArray(action.fields) ? action.fields : []).filter(Boolean).forEach((field) => {
+                            if (currentValues[field] !== null ||
+                                !Object.prototype.hasOwnProperty.call(currentValues, field)) {
+                                currentValues[field] = null;
+                                changedFields.add(field);
+                                hasUpdates = true;
+                            }
+                            this._ruleClearedFields.add(field);
+                        });
+                    }
+                });
+            });
+        }
+
+        this.values = currentValues;
     }
 
     async handleSubmit() {
@@ -243,6 +325,7 @@ export default class ConditionalRecordForm extends LightningElement {
                 .filter((field) => this.isItemVisible(field))
                 .flatMap((field) => this.getFieldApiNames(field))
         );
+        this._ruleClearedFields.forEach((apiName) => visibleApiNames.add(apiName));
         const fields = {};
         visibleApiNames.forEach((apiName) => {
             if (Object.prototype.hasOwnProperty.call(currentValues, apiName)) {
@@ -254,6 +337,19 @@ export default class ConditionalRecordForm extends LightningElement {
                 .filter((field) => !this.isItemVisible(field))
                 .flatMap((field) => this.getFieldApiNames(field))
                 .forEach((apiName) => { fields[apiName] = null; });
+        }
+
+        if (this.submissionMode === 'event') {
+            this.dispatchEvent(new CustomEvent('formsubmit', {
+                detail: {
+                    objectApiName: this.objectApiName,
+                    recordId: this.effectiveRecordId,
+                    fields
+                },
+                bubbles: true,
+                composed: true
+            }));
+            return fields;
         }
 
         this.isSubmitting = true;
@@ -268,6 +364,7 @@ export default class ConditionalRecordForm extends LightningElement {
             if (!this.effectiveRecordId) this._createdRecordId = savedRecordId;
             this.showToast('Saved', 'Record saved successfully.', 'success');
             this.dispatchEvent(new CustomEvent('success', { detail: { id: savedRecordId } }));
+            return savedRecordId;
         } catch (error) {
             this.showToast('Unable to save record', this.getErrorMessage(error), 'error');
             this.dispatchEvent(new CustomEvent('error', { detail: error }));
@@ -302,22 +399,22 @@ export default class ConditionalRecordForm extends LightningElement {
         return this.conditionsPass(item);
     }
 
-    conditionsPass(item) {
+    conditionsPass(item, values = this.values) {
         const conditions = Array.isArray(item.visibleWhen)
             ? item.visibleWhen
             : item.visibleWhen
                 ? [item.visibleWhen]
                 : [];
         if (!conditions.length) return true;
-        const results = conditions.map((condition) => this.evaluate(condition));
+        const results = conditions.map((condition) => this.evaluate(condition, values));
         return item.visibleWhenLogic === 'OR'
             ? results.some(Boolean)
             : results.every(Boolean);
     }
 
-    evaluate(condition) {
+    evaluate(condition, values = this.values) {
         if (!condition?.field || !OPERATORS.has(condition.operator)) return false;
-        const actual = this.values[condition.field];
+        const actual = values[condition.field];
         const expected = condition.value;
         const actualText = Array.isArray(actual) ? actual.join(';') : String(actual ?? '');
         const expectedText = Array.isArray(expected) ? expected.join(';') : String(expected ?? '');
