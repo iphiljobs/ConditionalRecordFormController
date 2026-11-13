@@ -3,7 +3,7 @@
     <apiVersion>66.0</apiVersion>
     <isExposed>true</isExposed>
     <masterLabel>Conditional Record Form</masterLabel>
-    <description>Configurable record form with answer-driven conditional fields.</description>
+    <description>Configurable form using an imported JavaScript config and server-side Salesforce field mappings.</description>
     <targets>
         <target>lightning__RecordPage</target>
         <target>lightning__AppPage</target>
@@ -13,12 +13,8 @@
     </targets>
     <targetConfigs>
         <targetConfig targets="lightning__RecordPage,lightning__AppPage,lightning__HomePage,lightningCommunity__Default">
-            <property name="objectApiName" type="String" label="Object API Name" description="Salesforce object to create or edit." />
+            <property name="formKey" type="String" label="Form Key" description="Must match the formKey in the imported config and the server-side field mappings." />
             <property name="recordId" type="String" label="Record ID" description="Optional record ID; leave blank to create a record." />
-            <property name="title" type="String" label="Form Title" default="Conditional Form" />
-            <property name="description" type="String" label="Form Description" />
-            <property name="submitLabel" type="String" label="Submit Button Label" default="Save" />
-            <property name="formConfigJson" type="String" label="Form Configuration JSON" />
         </targetConfig>
     </targetConfigs>
 </LightningComponentBundle>

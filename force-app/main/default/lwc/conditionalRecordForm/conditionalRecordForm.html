@@ -1,8 +1,8 @@
 <template>
-    <lightning-card title={title}>
+    <lightning-card title={formTitle}>
         <div class="slds-p-horizontal_medium slds-p-bottom_medium">
-            <template lwc:if={description}>
-                <p class="slds-m-bottom_medium">{description}</p>
+            <template lwc:if={formDescription}>
+                <p class="slds-m-bottom_medium">{formDescription}</p>
             </template>
 
             <div class="slds-grid slds-wrap slds-gutters">
@@ -22,6 +22,17 @@
                     <template lwc:elseif={item.isText}>
                         <p>{item.text}</p>
                     </template>
+                    <template lwc:elseif={item.isLookup}>
+                        <c-conditional-record-lookup
+                            form-key={formKey}
+                            field-key={item.key}
+                            label={item.label}
+                            value={item.value}
+                            placeholder={item.placeholder}
+                            required={item.required}
+                            onlookupchange={handleLookupChange}>
+                        </c-conditional-record-lookup>
+                    </template>
                     <template lwc:elseif={item.isAddress}>
                         <lightning-input-address
                             address-label={item.label}
@@ -38,19 +49,19 @@
                             country-options={item.countryOptions}
                             province-options={item.provinceOptions}
                             required={item.required}
-                            data-field={item.apiName}
+                            data-field-key={item.key}
                             onchange={handleFieldChange}>
                         </lightning-input-address>
                     </template>
                     <template lwc:elseif={item.isPicklist}>
                         <lightning-combobox
                             label={item.label}
-                            name={item.apiName}
+                            name={item.key}
                             value={item.value}
                             options={item.options}
                             required={item.required}
                             placeholder={item.placeholder}
-                            data-field={item.apiName}
+                            data-field-key={item.key}
                             onchange={handleFieldChange}>
                         </lightning-combobox>
                     </template>
@@ -58,7 +69,7 @@
                         <lightning-input
                             type={item.type}
                             label={item.label}
-                            name={item.apiName}
+                            name={item.key}
                             value={item.value}
                             checked={item.checked}
                             required={item.required}
@@ -66,7 +77,7 @@
                             min={item.min}
                             max={item.max}
                             step={item.step}
-                            data-field={item.apiName}
+                            data-field-key={item.key}
                             onchange={handleFieldChange}>
                         </lightning-input>
                     </template>
@@ -78,7 +89,7 @@
                 <lightning-button
                     class="slds-m-top_small"
                     variant="brand"
-                    label={submitLabel}
+                    label={formSubmitLabel}
                     onclick={handleSubmit}
                     disabled={isSubmitting}>
                 </lightning-button>

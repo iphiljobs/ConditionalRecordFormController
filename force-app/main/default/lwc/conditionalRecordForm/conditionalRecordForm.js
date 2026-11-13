@@ -1,8 +1,9 @@
-import { LightningElement, api, wire } from 'lwc';
-import { getRecord, getFieldValue } from 'lightning/uiRecordApi';
-import saveRecord from '@salesforce/apex/ConditionalRecordFormController.saveRecord';
-import Toast from 'lightning/toast';
+import { LightningElement, api } from 'lwc';
 import DEFAULT_FORM_CONFIG from './conditionalRecordFormConfig';
+import { VISIBILITY_EVALUATORS } from './conditionalRecordFormVisibility';
+import saveRecord from '@salesforce/apex/ConditionalRecordFormController.saveRecord';
+import loadFormData from '@salesforce/apex/ConditionalRecordFormController.loadFormData';
+import Toast from 'lightning/toast';
 
 const OPERATORS = new Set([
     'equals',
@@ -23,45 +24,75 @@ const INPUT_TYPES = new Set([
 const ADDRESS_PARTS = ['street', 'city', 'province', 'postalCode', 'country'];
 
 export default class ConditionalRecordForm extends LightningElement {
-    @api objectApiName;
+    _formKey;
+    _configLoaded = false;
+    formTitle = 'Conditional Form';
+    formDescription;
+    formSubmitLabel = 'Save';
+
+    @api
+    get formKey() {
+        return this._formKey;
+    }
+
+    set formKey(value) {
+        this._formKey = value;
+        if (this.isConnected && this._configLoaded) {
+            this.clientFieldValues = [];
+            this._createdRecordId = undefined;
+            this.loadRecordValues();
+        }
+    }
+
     @api recordId;
-    @api title = 'Conditional Form';
-    @api description;
-    @api submitLabel = 'Save';
+
     showSubmitButton = true;
     submissionMode = 'apex';
 
     clientFieldValues = [];
     isSubmitting = false;
-    _config = { items: [], clearWhenHidden: false, valueRules: [] };
-    _formConfigJson;
+    _config = { items: [], clearWhenHidden: false, columns: 1, valueRules: [] };
     _createdRecordId;
     _ruleClearedFields = new Set();
 
-    @api
-    get formConfigJson() {
-        return this._formConfigJson;
-    }
-
-    set formConfigJson(value) {
-        this._formConfigJson = value;
-        if (this.isConnected) this.parseConfig();
-    }
-
     connectedCallback() {
-        this.parseConfig();
+        if (!this.formKey && DEFAULT_FORM_CONFIG?.formKey) {
+            this._formKey = DEFAULT_FORM_CONFIG.formKey;
+        }
+        this.parseConfig(DEFAULT_FORM_CONFIG);
+        this._configLoaded = true;
+        this.loadRecordValues();
+    }
+
+    async loadRecordValues() {
+        if (!this.formKey || !this.effectiveRecordId || !this.formFields.length) return;
+        const fieldKeys = [...new Set(this.formFields.flatMap((field) => this.getFieldKeys(field)))];
+        try {
+            const data = await loadFormData({
+                formKey: this.formKey,
+                recordId: this.effectiveRecordId,
+                fieldKeys
+            });
+            const loadedValues = { ...this.values };
+            (data?.fields || []).forEach((wrapper) => {
+                loadedValues[wrapper.key] = wrapper.valueJson ? JSON.parse(wrapper.valueJson) : null;
+            });
+            this.values = loadedValues;
+        } catch (error) {
+            this.showToast('Unable to load record', this.getErrorMessage(error), 'error');
+        }
     }
 
     get values() {
         return this.clientFieldValues.reduce((result, wrapper) => {
-            result[wrapper.fieldApiName] = wrapper.value;
+            result[wrapper.key] = wrapper.value;
             return result;
         }, {});
     }
 
     set values(nextValues) {
-        this.clientFieldValues = Object.entries(nextValues || {}).map(([fieldApiName, value]) => ({
-            fieldApiName,
+        this.clientFieldValues = Object.entries(nextValues || {}).map(([key, value]) => ({
+            key,
             value
         }));
     }
@@ -73,16 +104,9 @@ export default class ConditionalRecordForm extends LightningElement {
         return this.handleSubmit();
     }
 
-    get recordFields() {
-        if (!this.objectApiName || !this.formFields.length) return undefined;
-        return this.formFields
-            .flatMap((field) => this.getFieldApiNames(field))
-            .map((apiName) => `${this.objectApiName}.${apiName}`);
-    }
-
     get formFields() {
         return this._config.items.filter((item) =>
-            item?.apiName && (item.kind === 'field' || !item.kind)
+            item?.key && (item.kind === 'field' || !item.kind)
         );
     }
 
@@ -91,19 +115,28 @@ export default class ConditionalRecordForm extends LightningElement {
     }
 
     get visibleItems() {
+        let activeColumns = this._config.columns;
         return this._config.items
             .map((item, index) => {
-                const kind = item.kind || (item.apiName ? 'field' : 'text');
-                const isField = kind === 'field' && Boolean(item.apiName);
+                const kind = item.kind || (item.key ? 'field' : 'text');
+                if (kind === 'section') {
+                    activeColumns = Number(item.columns) === 1 || Number(item.columns) === 2
+                        ? Number(item.columns)
+                        : this._config.columns;
+                }
+                const itemColumns = activeColumns;
+                const isField = kind === 'field' && Boolean(item.key);
                 const isCheckbox = isField && item.type === 'checkbox';
                 const isSpacer = kind === 'spacer';
                 const fullWidth = kind === 'section' || kind === 'text' ||
                     (isField && (item.type === 'address' || item.fullWidth === true || item.span === 2)) ||
-                    (isSpacer && item.span === 2) || this._config.columns === 1;
+                    (isSpacer && item.span === 2) || itemColumns === 1;
                 return {
                     ...item,
                     kind,
-                    renderKey: item.key || item.apiName || `item-${index}`,
+                    itemColumns,
+                    renderKey: item.key || `item-${index}`,
+                    itemIndex: index,
                     isSpacer,
                     columnClass: fullWidth
                         ? 'slds-col slds-size_1-of-1 slds-m-bottom_small'
@@ -113,56 +146,42 @@ export default class ConditionalRecordForm extends LightningElement {
                     isField,
                     heading: item.heading || item.label || item.title,
                     type: item.type === 'picklist' ? 'text' : (INPUT_TYPES.has(item.type) ? item.type : 'text'),
+                    isLookup: isField && item.type === 'lookup',
                     isAddress: isField && item.type === 'address',
                     isPicklist: isField && item.type === 'picklist',
                     address: {
-                        street: this.values[item.apiNames?.street] || '',
-                        city: this.values[item.apiNames?.city] || '',
-                        province: this.values[item.apiNames?.province] || '',
-                        postalCode: this.values[item.apiNames?.postalCode] || '',
-                        country: this.values[item.apiNames?.country] || ''
+                        street: this.values[item.fieldKeys?.street] || '',
+                        city: this.values[item.fieldKeys?.city] || '',
+                        province: this.values[item.fieldKeys?.province] || '',
+                        postalCode: this.values[item.fieldKeys?.postalCode] || '',
+                        country: this.values[item.fieldKeys?.country] || ''
                     },
                     streetLabel: item.streetLabel || 'Street',
                     cityLabel: item.cityLabel || 'City',
                     provinceLabel: item.provinceLabel || 'State/Province',
                     postalCodeLabel: item.postalCodeLabel || 'Postal Code',
                     countryLabel: item.countryLabel || 'Country',
-                    value: Object.prototype.hasOwnProperty.call(this.values, item.apiName)
-                        ? this.values[item.apiName]
+                    value: Object.prototype.hasOwnProperty.call(this.values, item.key)
+                        ? this.values[item.key]
                         : item.defaultValue,
                     checked: isCheckbox
-                        ? Boolean(Object.prototype.hasOwnProperty.call(this.values, item.apiName)
-                            ? this.values[item.apiName]
+                        ? Boolean(Object.prototype.hasOwnProperty.call(this.values, item.key)
+                            ? this.values[item.key]
                             : item.defaultValue)
                         : false,
                     options: Array.isArray(item.options) ? item.options : []
                 };
             })
-            .filter((item) => item.kind !== 'spacer' || this._config.columns === 2)
+            .filter((item) => item.kind !== 'spacer' || item.itemColumns === 2)
             .filter((item) => this.isItemVisible(item));
     }
 
-    @wire(getRecord, { recordId: '$effectiveRecordId', fields: '$recordFields' })
-    wiredRecord({ data, error }) {
-        if (data) {
-            const loadedValues = { ...this.values };
-            this.formFields.forEach((field) => {
-                this.getFieldApiNames(field).forEach((apiName) => {
-                    loadedValues[apiName] = getFieldValue(data, `${this.objectApiName}.${apiName}`);
-                });
-            });
-            this.values = loadedValues;
-        } else if (error) {
-            this.showToast('Unable to load record', this.getErrorMessage(error), 'error');
-        }
-    }
-
-    parseConfig() {
+    parseConfig(configSource) {
         try {
-            const configSource = this.formConfigJson || DEFAULT_FORM_CONFIG;
-            const parsed = typeof configSource === 'string'
-                ? JSON.parse(configSource)
-                : configSource;
+            const parsed = typeof configSource === 'string' ? JSON.parse(configSource) : configSource;
+            if (parsed?.formKey && parsed.formKey !== this.formKey) {
+                throw new Error('The imported config formKey must match the component formKey.');
+            }
             const items = Array.isArray(parsed?.items)
                 ? parsed.items
                 : Array.isArray(parsed?.fields) ? parsed.fields : [];
@@ -177,15 +196,15 @@ export default class ConditionalRecordForm extends LightningElement {
             this._ruleClearedFields = new Set();
             this.showSubmitButton = this._config.showSubmitButton;
             this.submissionMode = this._config.submissionMode;
-            this.title = parsed?.title || this.title;
-            this.description = parsed?.description || this.description;
-            this.submitLabel = parsed?.submitLabel || this.submitLabel;
+            this.formTitle = parsed?.title || 'Conditional Form';
+            this.formDescription = parsed?.description;
+            this.formSubmitLabel = parsed?.submitLabel || 'Save';
 
             const defaults = { ...this.values };
             this.formFields.forEach((field) => {
                 if (field.defaultValue !== undefined &&
-                    !Object.prototype.hasOwnProperty.call(defaults, field.apiName)) {
-                    defaults[field.apiName] = field.defaultValue;
+                    !Object.prototype.hasOwnProperty.call(defaults, field.key)) {
+                    defaults[field.key] = field.defaultValue;
                 }
             });
             this.values = defaults;
@@ -206,36 +225,44 @@ export default class ConditionalRecordForm extends LightningElement {
     }
 
     handleFieldChange(event) {
-        const apiName = event.currentTarget.dataset.field;
-        if (!apiName) return;
-        const field = this.formFields.find((item) => item.apiName === apiName);
+        const fieldKey = event.currentTarget.dataset.fieldKey;
+        if (!fieldKey) return;
+        const field = this.formFields.find((item) => item.key === fieldKey);
         if (field?.type === 'address') {
             const address = event.target;
             const nextValues = { ...this.values };
             ADDRESS_PARTS.forEach((part) => {
-                const fieldApiName = field.apiNames?.[part];
-                if (fieldApiName) nextValues[fieldApiName] = address[part] || '';
+                const key = field.fieldKeys?.[part];
+                if (key) nextValues[key] = address[part] || '';
             });
             this.values = nextValues;
             this._ruleClearedFields = new Set(
-                [...this._ruleClearedFields].filter((name) => !Object.values(field.apiNames || {}).includes(name))
+                [...this._ruleClearedFields].filter((name) => !Object.values(field.fieldKeys || {}).includes(name))
             );
-            this.applyValueRules(Object.values(field.apiNames || {}).filter(Boolean));
+            this.applyValueRules(Object.values(field.fieldKeys || {}).filter(Boolean));
             return;
         }
         const value = event.target.type === 'checkbox'
             ? event.target.checked
             : event.detail?.value ?? event.target.value;
-        this.setClientValue(apiName, value);
-        this._ruleClearedFields.delete(apiName);
-        this.applyValueRules([apiName]);
+        this.setClientValue(fieldKey, value);
+        this._ruleClearedFields.delete(fieldKey);
+        this.applyValueRules([fieldKey]);
     }
 
-    applyValueRules(changedFieldApiNames) {
+    handleLookupChange(event) {
+        const { fieldKey, recordId } = event.detail || {};
+        if (!fieldKey) return;
+        this.setClientValue(fieldKey, recordId);
+        this._ruleClearedFields.delete(fieldKey);
+        this.applyValueRules([fieldKey]);
+    }
+
+    applyValueRules(changedFieldKeys) {
         const rules = this._config.valueRules || [];
         if (!rules.length) return;
 
-        const changedFields = new Set(changedFieldApiNames);
+        const changedFields = new Set(changedFieldKeys);
         const currentValues = { ...this.values };
         const executedRules = new Set();
         let hasUpdates = true;
@@ -253,10 +280,11 @@ export default class ConditionalRecordForm extends LightningElement {
                     ? rule.when
                     : rule.when ? [rule.when] : [];
                 const dependencies = new Set(whenConditions.map((condition) => condition?.field).filter(Boolean));
+                const hasCustomCondition = whenConditions.some((condition) => Boolean(condition?.method));
                 rule.actions.forEach((action) => {
                     if (action?.type === 'copy' && action.from) dependencies.add(action.from);
                 });
-                if (![...dependencies].some((field) => changedFields.has(field))) return;
+                if (!hasCustomCondition && ![...dependencies].some((field) => changedFields.has(field))) return;
                 if (!this.conditionsPass({
                     visibleWhen: rule.when,
                     visibleWhenLogic: rule.whenLogic
@@ -301,48 +329,47 @@ export default class ConditionalRecordForm extends LightningElement {
     }
 
     async handleSubmit() {
-        const inputs = [...this.template.querySelectorAll('lightning-input, lightning-combobox')];
+        const inputs = [...this.template.querySelectorAll('lightning-input, lightning-combobox, c-conditional-record-lookup')];
         const allValid = inputs.reduce((valid, input) => input.reportValidity() && valid, true);
         const invalidRequiredAddress = this.formFields.some((field) => {
             if (field.type !== 'address' || !field.required || !this.isItemVisible(field)) return false;
             return ADDRESS_PARTS
-                .filter((part) => field.apiNames?.[part])
-                .some((part) => !String(this.values[field.apiNames[part]] || '').trim());
+                .filter((part) => field.fieldKeys?.[part])
+                .some((part) => !String(this.values[field.fieldKeys[part]] || '').trim());
         });
-        if (!allValid || invalidRequiredAddress || !this.objectApiName) {
+        if (!allValid || invalidRequiredAddress || !this.formKey) {
             if (invalidRequiredAddress) {
                 this.showToast('Address is incomplete', 'Complete all required address fields before saving.', 'error');
             }
-            if (!this.objectApiName) {
-                this.showToast('Form configuration required', 'Set the Salesforce object API name.', 'error');
+            if (!this.formKey) {
+                this.showToast('Form configuration required', 'Set the server-side form key.', 'error');
             }
             return;
         }
 
         const currentValues = this.values;
-        const visibleApiNames = new Set(
+        const visibleFieldKeys = new Set(
             this.formFields
                 .filter((field) => this.isItemVisible(field))
-                .flatMap((field) => this.getFieldApiNames(field))
+                .flatMap((field) => this.getFieldKeys(field))
         );
-        this._ruleClearedFields.forEach((apiName) => visibleApiNames.add(apiName));
-        const fields = {};
-        visibleApiNames.forEach((apiName) => {
-            if (Object.prototype.hasOwnProperty.call(currentValues, apiName)) {
-                fields[apiName] = currentValues[apiName];
-            }
-        });
+        this._ruleClearedFields.forEach((fieldKey) => visibleFieldKeys.add(fieldKey));
+        const fields = [...visibleFieldKeys]
+            .filter((fieldKey) => Object.prototype.hasOwnProperty.call(currentValues, fieldKey))
+            .map((key) => ({ key, valueJson: JSON.stringify(currentValues[key]) }));
         if (this._config.clearWhenHidden) {
             this.formFields
                 .filter((field) => !this.isItemVisible(field))
-                .flatMap((field) => this.getFieldApiNames(field))
-                .forEach((apiName) => { fields[apiName] = null; });
+                .flatMap((field) => this.getFieldKeys(field))
+                .forEach((key) => {
+                    if (!fields.some((fieldValue) => fieldValue.key === key)) fields.push({ key, valueJson: 'null' });
+                });
         }
 
         if (this.submissionMode === 'event') {
             this.dispatchEvent(new CustomEvent('formsubmit', {
                 detail: {
-                    objectApiName: this.objectApiName,
+                    formKey: this.formKey,
                     recordId: this.effectiveRecordId,
                     fields
                 },
@@ -356,7 +383,7 @@ export default class ConditionalRecordForm extends LightningElement {
         try {
             const savedRecordId = await saveRecord({
                 payloadJson: JSON.stringify({
-                    objectApiName: this.objectApiName,
+                    formKey: this.formKey,
                     recordId: this.effectiveRecordId,
                     fields
                 })
@@ -373,17 +400,17 @@ export default class ConditionalRecordForm extends LightningElement {
         }
     }
 
-    getFieldApiNames(field) {
+    getFieldKeys(field) {
         if (field?.type === 'address') {
-            return ADDRESS_PARTS.map((part) => field.apiNames?.[part]).filter(Boolean);
+            return ADDRESS_PARTS.map((part) => field.fieldKeys?.[part]).filter(Boolean);
         }
-        return field?.apiName ? [field.apiName] : [];
+        return field?.key ? [field.key] : [];
     }
 
-    setClientValue(fieldApiName, value) {
+    setClientValue(key, value) {
         const updated = [...this.clientFieldValues];
-        const existingIndex = updated.findIndex((wrapper) => wrapper.fieldApiName === fieldApiName);
-        const wrapper = { fieldApiName, value };
+        const existingIndex = updated.findIndex((wrapper) => wrapper.key === key);
+        const wrapper = { key, value };
         if (existingIndex === -1) updated.push(wrapper);
         else updated[existingIndex] = wrapper;
         this.clientFieldValues = updated;
@@ -413,6 +440,20 @@ export default class ConditionalRecordForm extends LightningElement {
     }
 
     evaluate(condition, values = this.values) {
+        if (condition?.method) {
+            const evaluator = VISIBILITY_EVALUATORS[condition.method];
+            if (typeof evaluator !== 'function') return false;
+            try {
+                return Boolean(evaluator({
+                    values,
+                    args: condition.args && typeof condition.args === 'object' ? condition.args : {},
+                    formKey: this.formKey
+                }));
+            } catch {
+                // A custom evaluator failure should hide the conditional content safely.
+                return false;
+            }
+        }
         if (!condition?.field || !OPERATORS.has(condition.operator)) return false;
         const actual = values[condition.field];
         const expected = condition.value;

@@ -1,0 +1,43 @@
+.lookup {
+    position: relative;
+}
+
+.suggestions {
+    position: absolute;
+    z-index: 5;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 15rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: 0.25rem 0;
+    list-style: none;
+    border: 1px solid #c9c9c9;
+    border-radius: 0.25rem;
+    background: #fff;
+    box-shadow: 0 2px 6px rgb(0 0 0 / 18%);
+}
+
+.suggestion {
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 0;
+    background: transparent;
+    color: #181818;
+    text-align: left;
+    cursor: pointer;
+}
+
+.suggestion:hover,
+.suggestion:focus {
+    background: #f3f3f3;
+    outline: none;
+}
+
+.clear-button {
+    position: absolute;
+    top: 1.85rem;
+    right: 0.4rem;
+    z-index: 2;
+}
