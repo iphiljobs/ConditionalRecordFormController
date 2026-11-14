@@ -236,7 +236,7 @@ export default class ConditionalRecordForm extends LightningElement {
                         step: item.step ?? 1
                     }),
                     isLookup: isField && item.type === 'lookup',
-                    readOnly: Boolean(item.readOnlyWhen) && this.conditionsPass({
+                    addressDisabled: item.type === 'address' && Boolean(item.readOnlyWhen) && this.conditionsPass({
                         visibleWhen: item.readOnlyWhen,
                         visibleWhenLogic: item.readOnlyWhenLogic
                     }, values),
@@ -354,7 +354,7 @@ export default class ConditionalRecordForm extends LightningElement {
         if (!field) return;
         const input = event.currentTarget;
         if (field.type === 'address') {
-            if (input.readOnly) return;
+            if (input.disabled) return;
             const address = event.target;
             const nextValues = { ...this.values };
             ADDRESS_PARTS.forEach((part) => {

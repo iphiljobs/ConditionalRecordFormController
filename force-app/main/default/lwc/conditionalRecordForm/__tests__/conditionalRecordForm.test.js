@@ -398,30 +398,39 @@ describe('c-conditional-record-form', () => {
         await toggleMirror(true);
         expect(mailing.street).toBe('');
         expect(mailing.city).toBe('');
-        expect(mailing.readOnly).toBe(true);
+        expect(mailing.disabled).toBe(true);
+        expect(billing.disabled).toBe(false);
 
         const updated = {
             street: 'New address', city: 'Tampa', province: 'Florida', postalCode: '33647', country: 'United States'
         };
         changeAddress(billing, updated);
         await flushPromises();
-        expect(mailing).toMatchObject({ ...updated, readOnly: true });
+        expect(mailing).toMatchObject({ ...updated, disabled: true });
+
+        changeAddress(mailing, { street: 'Attempted override' });
+        // Restore the Jest stub property after simulating an event on the disabled control.
+        mailing.street = updated.street;
+        const beforeRevision = await element.submit();
+        expect(beforeRevision).toContainEqual({ key: mailingKeys.street, valueJson: '"New address"' });
 
         const revised = { ...updated, city: '', postalCode: '33602' };
         changeAddress(billing, revised);
         const submitted = await element.submit();
-        expect(mailing).toMatchObject({ ...revised, readOnly: true });
+        expect(mailing).toMatchObject({ ...revised, disabled: true });
         expect(submitted).toHaveLength(10);
         expect(Object.fromEntries(submitted.map(({ key, valueJson }) => [key, JSON.parse(valueJson)])))
             .toEqual(Object.fromEntries([billingKeys, mailingKeys].flatMap((keys) =>
                 parts.map((part) => [keys[part], revised[part]]))));
 
         await toggleMirror(false);
-        expect(mailing.readOnly).toBe(false);
+        expect(mailing.disabled).toBe(false);
         changeAddress(billing, { street: 'Another address', city: 'Orlando' });
         await flushPromises();
         expect(mailing.street).toBe('New address');
         expect(mailing.city).toBe('');
+        changeAddress(mailing, { city: 'Orlando' });
+        expect(await element.submit()).toContainEqual({ key: mailingKeys.city, valueJson: '"Orlando"' });
     });
 
     it('excludes client-only fields from record loading and hidden or rule-cleared save paths', async () => {
