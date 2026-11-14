@@ -361,23 +361,24 @@ describe('c-conditional-record-form', () => {
 
     it('mirrors billing while checked and submits only the mapped address values', async () => {
         const same = `${FORM_KEY}.SameAsBilling`;
-        const billingStreet = `${FORM_KEY}.BillingStreet`;
-        const mailingStreet = `${FORM_KEY}.MailingStreet`;
-        const billingCity = `${FORM_KEY}.BillingCity`;
-        const mailingCity = `${FORM_KEY}.MailingCity`;
+        const parts = ['street', 'city', 'province', 'postalCode', 'country'];
+        const addressKeys = (prefix) => Object.fromEntries(parts.map((part) => [part, `${FORM_KEY}.${prefix}_${part}`]));
+        const billingKeys = addressKeys('Billing');
+        const mailingKeys = addressKeys('Mailing');
         const when = { field: same, operator: 'equals', value: true };
         const element = createComponent();
         await emitConfig({
             formKey: FORM_KEY, submissionMode: 'event',
             items: [
-                { key: 'billing', label: 'Billing', type: 'address', fieldKeys: { street: billingStreet, city: billingCity } },
+                { key: 'billing', label: 'Billing', type: 'address', fieldKeys: billingKeys },
                 { key: same, label: 'Same as billing', type: 'checkbox', clientOnly: true, defaultValue: false },
-                { key: 'mailing', label: 'Mailing', type: 'address', fieldKeys: { street: mailingStreet, city: mailingCity }, readOnlyWhen: when }
+                { key: 'mailing', label: 'Mailing', type: 'address', fieldKeys: mailingKeys, readOnlyWhen: when }
             ],
             valueRules: [{
                 when,
-                actions: [[billingStreet, mailingStreet], [billingCity, mailingCity]].map(([from, to]) =>
-                    ({ type: 'copy', from, to, overwrite: true, clearIfMissing: true }))
+                actions: parts.map((part) => ({
+                    type: 'copy', from: billingKeys[part], to: mailingKeys[part], overwrite: true, clearIfMissing: true
+                }))
             }]
         });
         const toggle = findField(element, 'lightning-input', same);
@@ -399,23 +400,28 @@ describe('c-conditional-record-form', () => {
         expect(mailing.city).toBe('');
         expect(mailing.readOnly).toBe(true);
 
-        changeAddress(billing, { street: 'New address', city: 'Tampa' });
+        const updated = {
+            street: 'New address', city: 'Tampa', province: 'Florida', postalCode: '33647', country: 'United States'
+        };
+        changeAddress(billing, updated);
         await flushPromises();
-        expect(mailing.street).toBe('New address');
-        expect(mailing.city).toBe('Tampa');
-        expect(await element.submit()).toEqual([
-            { key: billingStreet, valueJson: '"New address"' },
-            { key: billingCity, valueJson: '"Tampa"' },
-            { key: mailingStreet, valueJson: '"New address"' },
-            { key: mailingCity, valueJson: '"Tampa"' }
-        ]);
+        expect(mailing).toMatchObject({ ...updated, readOnly: true });
+
+        const revised = { ...updated, city: '', postalCode: '33602' };
+        changeAddress(billing, revised);
+        const submitted = await element.submit();
+        expect(mailing).toMatchObject({ ...revised, readOnly: true });
+        expect(submitted).toHaveLength(10);
+        expect(Object.fromEntries(submitted.map(({ key, valueJson }) => [key, JSON.parse(valueJson)])))
+            .toEqual(Object.fromEntries([billingKeys, mailingKeys].flatMap((keys) =>
+                parts.map((part) => [keys[part], revised[part]]))));
 
         await toggleMirror(false);
         expect(mailing.readOnly).toBe(false);
         changeAddress(billing, { street: 'Another address', city: 'Orlando' });
         await flushPromises();
         expect(mailing.street).toBe('New address');
-        expect(mailing.city).toBe('Tampa');
+        expect(mailing.city).toBe('');
     });
 
     it('excludes client-only fields from record loading and hidden or rule-cleared save paths', async () => {
