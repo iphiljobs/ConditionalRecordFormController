@@ -56,7 +56,7 @@ export default class ConditionalRecordForm extends LightningElement {
     _createdRecordId;
     _ruleClearedFields = new Set();
 
-    @wire(getFormConfig, { formKey: '$_formKey' })
+    @wire(getFormConfig, { formKey: '$formKey' })
     wiredFormConfig({ data, error }) {
         if (data) {
             this.parseConfig(data);
