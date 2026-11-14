@@ -65,6 +65,21 @@ The browser receives JSON like this from `getFormConfig`. It contains no Salesfo
 
 In the provider's `getFieldApiNames()`, map `ApplicationForm.applicantType` and `ApplicationForm.organizationName` to their actual Salesforce field API names. Those names remain in Apex source and are never returned in the config or `formsubmit` event.
 
+## Section layout
+
+Choose **Standard headings** or **Accordion** under **Section layout** in the
+config builder. In an Apex provider, set the top-level JSON property
+`"sectionLayout": "flat"` or `"sectionLayout": "accordion"`.
+Standard headings are the default when the setting is omitted.
+
+Accordion sections start expanded and can be collapsed independently. Fields,
+text, and spacers are grouped under the preceding section heading. A valid
+explicit `sectionKey` takes precedence. Items before the first heading without
+a section key are displayed above the accordion. A section's visibility rules
+apply to its accordion content. Collapsing a section preserves its values and
+keeps them eligible for submission. Saving opens any collapsed section that
+contains an invalid field.
+
 ## Account Intake sample fields
 
 `ApplicationFormDefinition` demonstrates all 14 input types. Deploy the sample

@@ -104,6 +104,7 @@ describe('c-conditional-record-form', () => {
         expect(element.shadowRoot.querySelector('lightning-card').title).toBe('Wired Jest Form');
         expect(element.shadowRoot.textContent).toContain('Configuration loaded from Apex.');
         expect(element.shadowRoot.textContent).toContain('Main fields');
+        expect(element.shadowRoot.querySelector('button[data-section-id]')).toBeNull();
         expect(element.shadowRoot.textContent).toContain('Helpful form text');
         expect(findField(element, 'lightning-combobox', STATUS).value).toBe('Hide');
         expect(findField(element, 'lightning-input', DETAILS)).toBeUndefined();
@@ -243,6 +244,75 @@ describe('c-conditional-record-form', () => {
         expect(input.setCustomValidityForField).toHaveBeenCalledWith('Add the city.', 'city');
         expect(input.setCustomValidityForField).toHaveBeenCalledWith('', 'street');
         expect(saveRecord).not.toHaveBeenCalled();
+    });
+
+    it('opens a collapsed section with an invalid field and retains entered values', async () => {
+        const element = createComponent();
+        const submitted = jest.fn();
+        element.addEventListener('formsubmit', submitted);
+        await emitConfig({
+            formKey: FORM_KEY,
+            sectionLayout: 'accordion',
+            submissionMode: 'event',
+            clearWhenHidden: true,
+            items: [
+                { kind: 'section', key: 'first', heading: 'First' },
+                { key: SOURCE, label: 'Source', type: 'text' },
+                { kind: 'section', key: 'second', heading: 'Second' },
+                { key: TARGET, label: 'Target', type: 'text', required: true },
+                { key: DETAILS, label: 'Details', type: 'text', sectionKey: 'first' }
+            ]
+        });
+
+        const [first, second] = element.shadowRoot.querySelectorAll('button[data-section-id]');
+        const panels = [...element.shadowRoot.querySelectorAll('[id]')];
+        const firstPanel = panels.find((panel) => panel.id === first.getAttribute('aria-controls'));
+        const secondPanel = panels.find((panel) => panel.id === second.getAttribute('aria-controls'));
+        expect(firstPanel.querySelector('[data-field-key="JestForm.Details"]')).toBeTruthy();
+        expect(secondPanel.querySelector('[data-field-key="JestForm.Target"]')).toBeTruthy();
+
+        changeValue(element, 'lightning-input', SOURCE, 'Keep this value');
+        first.click();
+        second.click();
+        await flushPromises();
+        expect(first.getAttribute('aria-expanded')).toBe('false');
+        expect(firstPanel.hidden).toBe(true);
+        expect(secondPanel.hidden).toBe(true);
+
+        await element.submit();
+        expect(submitted).not.toHaveBeenCalled();
+        expect(firstPanel.hidden).toBe(true);
+        expect(secondPanel.hidden).toBe(false);
+
+        changeValue(element, 'lightning-input', TARGET, 'Valid now');
+        await element.submit();
+        expect(submitted.mock.calls[0][0].detail.fields).toEqual([
+            { key: SOURCE, valueJson: '"Keep this value"' },
+            { key: TARGET, valueJson: '"Valid now"' }
+        ]);
+    });
+
+    it('honors section visibility for implicitly grouped fields in accordion mode', async () => {
+        const element = createComponent();
+        await emitConfig({
+            formKey: FORM_KEY,
+            sectionLayout: 'accordion',
+            clearWhenHidden: true,
+            submissionMode: 'event',
+            items: [
+                { key: SOURCE, label: 'Source', type: 'text' },
+                {
+                    kind: 'section', key: 'details', heading: 'Details',
+                    visibleWhen: { field: SOURCE, operator: 'isNotBlank' }
+                },
+                { key: DETAILS, label: 'Details', type: 'text', required: true }
+            ]
+        });
+        expect(findField(element, 'lightning-input', DETAILS)).toBeUndefined();
+        expect(await element.submit()).toEqual([{ key: DETAILS, valueJson: 'null' }]);
+        changeValue(element, 'lightning-input', SOURCE, 'Show');
+        await flushPromises();
+        expect(findField(element, 'lightning-input', DETAILS)).toBeDefined();
     });
 
     it('rejects configuration for a different form key', async () => {

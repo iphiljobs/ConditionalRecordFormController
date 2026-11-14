@@ -5,115 +5,139 @@
                 <p class="slds-m-bottom_medium">{formDescription}</p>
             </template>
 
-            <div class="slds-grid slds-wrap slds-gutters">
-                <template for:each={visibleItems} for:item="item">
-                <div key={item.renderKey} class={item.columnClass}>
-                    <template lwc:if={item.isSpacer}>
-                        <div aria-hidden="true"></div>
+            <template for:each={layoutGroups} for:item="group">
+                <div key={group.key} class={group.sectionClass}>
+                    <template lwc:if={group.isAccordion}>
+                        <h2 class="slds-section__title slds-theme_shade">
+                            <button
+                                type="button"
+                                class="slds-button slds-section__title-action"
+                                data-section-id={group.key}
+                                aria-expanded={group.expanded}
+                                aria-controls={group.panelId}
+                                onclick={handleSectionToggle}>
+                                <lightning-icon icon-name={group.icon} size="xx-small"
+                                    class="slds-m-right_x-small"></lightning-icon>
+                                <span>{group.heading}</span>
+                            </button>
+                        </h2>
                     </template>
-                    <template lwc:elseif={item.isSection}>
-                        <section class="slds-p-top_medium slds-border_bottom" aria-label={item.heading}>
-                            <h2 class="slds-text-heading_small slds-m-bottom_x-small">{item.heading}</h2>
-                            <template lwc:if={item.description}>
-                                <p class="slds-m-bottom_small">{item.description}</p>
+                    <div id={group.panelId} hidden={group.collapsed}>
+                        <template lwc:if={group.description}>
+                            <p class="slds-m-top_small slds-m-bottom_small">{group.description}</p>
+                        </template>
+                        <div class="slds-grid slds-wrap slds-gutters">
+                            <template for:each={group.items} for:item="item">
+                                <div key={item.renderKey} class={item.columnClass}>
+                                    <template lwc:if={item.isSpacer}>
+                                        <div aria-hidden="true"></div>
+                                    </template>
+                                    <template lwc:elseif={item.isSection}>
+                                        <section class="slds-p-top_medium slds-border_bottom" aria-label={item.heading}>
+                                            <h2 class="slds-text-heading_small slds-m-bottom_x-small">{item.heading}</h2>
+                                            <template lwc:if={item.description}>
+                                                <p class="slds-m-bottom_small">{item.description}</p>
+                                            </template>
+                                        </section>
+                                    </template>
+                                    <template lwc:elseif={item.isText}>
+                                        <p>{item.text}</p>
+                                    </template>
+                                    <template lwc:elseif={item.isLookup}>
+                                        <c-conditional-record-lookup
+                                            form-key={formKey}
+                                            field-key={item.key}
+                                            label={item.label}
+                                            value={item.value}
+                                            placeholder={item.placeholder}
+                                            required={item.required}
+                                            input-messages={item.messages}
+                                            input-help={item.help}
+                                            data-field-key={item.key}
+                                            onlookupchange={handleLookupChange}>
+                                        </c-conditional-record-lookup>
+                                    </template>
+                                    <template lwc:elseif={item.isAddress}>
+                                        <lightning-input-address
+                                            address-label={item.label}
+                                            street-label={item.streetLabel}
+                                            city-label={item.cityLabel}
+                                            province-label={item.provinceLabel}
+                                            country-label={item.countryLabel}
+                                            postal-code-label={item.postalCodeLabel}
+                                            street-placeholder={item.addressPlaceholders.street}
+                                            city-placeholder={item.addressPlaceholders.city}
+                                            province-placeholder={item.addressPlaceholders.province}
+                                            country-placeholder={item.addressPlaceholders.country}
+                                            postal-code-placeholder={item.addressPlaceholders.postalCode}
+                                            street={item.address.street}
+                                            city={item.address.city}
+                                            province={item.address.province}
+                                            country={item.address.country}
+                                            postal-code={item.address.postalCode}
+                                            country-options={item.countryOptions}
+                                            province-options={item.provinceOptions}
+                                            field-level-help={item.help}
+                                            required={item.addressRequired}
+                                            data-field-key={item.key}
+                                            onchange={handleFieldChange}>
+                                        </lightning-input-address>
+                                    </template>
+                                    <template lwc:elseif={item.isPicklist}>
+                                        <lightning-combobox
+                                            label={item.label}
+                                            name={item.key}
+                                            value={item.value}
+                                            options={item.options}
+                                            field-level-help={item.help}
+                                            message-when-value-missing={item.requiredMessage}
+                                            required={item.required}
+                                            placeholder={item.placeholder}
+                                            data-field-key={item.key}
+                                            onchange={handleFieldChange}>
+                                        </lightning-combobox>
+                                    </template>
+                                    <template lwc:else>
+                                        <lightning-input
+                                            type={item.type}
+                                            label={item.label}
+                                            name={item.key}
+                                            value={item.value}
+                                            checked={item.checked}
+                                            required={item.required}
+                                            placeholder={item.placeholder}
+                                            min={item.min}
+                                            max={item.max}
+                                            step={item.step}
+                                            formatter={item.formatter}
+                                            date-style={item.dateStyle}
+                                            time-style={item.timeStyle}
+                                            timezone={item.timezone}
+                                            minlength={item.minLength}
+                                            maxlength={item.maxLength}
+                                            pattern={item.pattern}
+                                            autocomplete={item.autocomplete}
+                                            field-level-help={item.help}
+                                            message-when-value-missing={item.requiredMessage}
+                                            message-when-bad-input={item.badInputMessage}
+                                            message-when-type-mismatch={item.typeMismatchMessage}
+                                            message-when-pattern-mismatch={item.patternMessage}
+                                            message-when-too-short={item.tooShortMessage}
+                                            message-when-too-long={item.tooLongMessage}
+                                            message-when-range-underflow={item.underflowMessage}
+                                            message-when-range-overflow={item.overflowMessage}
+                                            message-when-step-mismatch={item.stepMessage}
+                                            data-field-key={item.key}
+                                            onblur={handleFieldBlur}
+                                            onchange={handleFieldChange}>
+                                        </lightning-input>
+                                    </template>
+                                </div>
                             </template>
-                        </section>
-                    </template>
-                    <template lwc:elseif={item.isText}>
-                        <p>{item.text}</p>
-                    </template>
-                    <template lwc:elseif={item.isLookup}>
-                        <c-conditional-record-lookup
-                            form-key={formKey}
-                            field-key={item.key}
-                            label={item.label}
-                            value={item.value}
-                            placeholder={item.placeholder}
-                            required={item.required}
-                            input-messages={item.messages}
-                            input-help={item.help}
-                            data-field-key={item.key}
-                            onlookupchange={handleLookupChange}>
-                        </c-conditional-record-lookup>
-                    </template>
-                    <template lwc:elseif={item.isAddress}>
-                        <lightning-input-address
-                            address-label={item.label}
-                            street-label={item.streetLabel}
-                            city-label={item.cityLabel}
-                            province-label={item.provinceLabel}
-                            country-label={item.countryLabel}
-                            postal-code-label={item.postalCodeLabel}
-                            street-placeholder={item.addressPlaceholders.street}
-                            city-placeholder={item.addressPlaceholders.city}
-                            province-placeholder={item.addressPlaceholders.province}
-                            country-placeholder={item.addressPlaceholders.country}
-                            postal-code-placeholder={item.addressPlaceholders.postalCode}
-                            street={item.address.street}
-                            city={item.address.city}
-                            province={item.address.province}
-                            country={item.address.country}
-                            postal-code={item.address.postalCode}
-                            country-options={item.countryOptions}
-                            province-options={item.provinceOptions}
-                            field-level-help={item.help}
-                            required={item.addressRequired}
-                            data-field-key={item.key}
-                            onchange={handleFieldChange}>
-                        </lightning-input-address>
-                    </template>
-                    <template lwc:elseif={item.isPicklist}>
-                        <lightning-combobox
-                            label={item.label}
-                            name={item.key}
-                            value={item.value}
-                            options={item.options}
-                            field-level-help={item.help}
-                            message-when-value-missing={item.requiredMessage}
-                            required={item.required}
-                            placeholder={item.placeholder}
-                            data-field-key={item.key}
-                            onchange={handleFieldChange}>
-                        </lightning-combobox>
-                    </template>
-                    <template lwc:else>
-                        <lightning-input
-                            type={item.type}
-                            label={item.label}
-                            name={item.key}
-                            value={item.value}
-                            checked={item.checked}
-                            required={item.required}
-                            placeholder={item.placeholder}
-                            min={item.min}
-                            max={item.max}
-                            step={item.step}
-                            formatter={item.formatter}
-                            date-style={item.dateStyle}
-                            time-style={item.timeStyle}
-                            timezone={item.timezone}
-                            minlength={item.minLength}
-                            maxlength={item.maxLength}
-                            pattern={item.pattern}
-                            autocomplete={item.autocomplete}
-                            field-level-help={item.help}
-                            message-when-value-missing={item.requiredMessage}
-                            message-when-bad-input={item.badInputMessage}
-                            message-when-type-mismatch={item.typeMismatchMessage}
-                            message-when-pattern-mismatch={item.patternMessage}
-                            message-when-too-short={item.tooShortMessage}
-                            message-when-too-long={item.tooLongMessage}
-                            message-when-range-underflow={item.underflowMessage}
-                            message-when-range-overflow={item.overflowMessage}
-                            message-when-step-mismatch={item.stepMessage}
-                            data-field-key={item.key}
-                            onblur={handleFieldBlur}
-                            onchange={handleFieldChange}>
-                        </lightning-input>
-                    </template>
+                        </div>
+                    </div>
                 </div>
-                </template>
-            </div>
+            </template>
 
             <template lwc:if={showSubmitButton}>
                 <lightning-button

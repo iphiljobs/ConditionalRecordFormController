@@ -53,6 +53,13 @@
           </div>
           <div class="grid one">
             <div class="control"><label for="columns">Columns</label><select id="columns" data-bind="columns"><option value="1">1 column</option><option value="2">2 columns</option></select></div>
+            <div class="control">
+              <label for="sectionLayout">Section layout</label>
+              <select id="sectionLayout" data-bind="sectionLayout">
+                <option value="flat">Standard headings</option>
+                <option value="accordion">Accordion</option>
+              </select>
+            </div>
             <label class="check"><input type="checkbox" data-bind="showSubmitButton"> Show built-in Save button</label>
             <div class="control"><label for="submissionMode">Submission mode</label><select id="submissionMode" data-bind="submissionMode"><option value="apex">Save through component Apex</option><option value="event">Dispatch formsubmit event to parent</option></select></div>
             <label class="check"><input type="checkbox" data-bind="clearWhenHidden"> Clear hidden fields on submit</label>
@@ -111,7 +118,7 @@
     const config = {
       formKey: 'ApplicationForm', serverObjectApiName: '', title: 'Conditional Form', description: '', submitLabel: 'Save', columns: 1,
       showSubmitButton: true, submissionMode: 'apex', clearWhenHidden: false,
-      inputTextJson: '', items: [], valueRules: []
+      sectionLayout: 'flat', inputTextJson: '', items: [], valueRules: []
     };
     const itemsRoot = document.getElementById('items');
     const rulesRoot = document.getElementById('rules');
@@ -263,6 +270,7 @@
       const result = {
         formKey:config.formKey, title:config.title, description:config.description, submitLabel:config.submitLabel,
         columns:Number(config.columns)===2?2:1,
+        sectionLayout:config.sectionLayout==='accordion'?'accordion':'flat',
         showSubmitButton:Boolean(config.showSubmitButton), submissionMode:config.submissionMode,
         clearWhenHidden:Boolean(config.clearWhenHidden),
         items:config.items.map(item => {

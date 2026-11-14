@@ -26,6 +26,7 @@ const NUMBER_FORMATS = new Set(['decimal', 'currency', 'percent', 'percent-fixed
 export default class ConditionalRecordForm extends LightningElement {
     _formKey;
     _configLoaded = false;
+    collapsedSections = [];
     formTitle = 'Conditional Form';
     formDescription;
     formSubmitLabel = 'Save';
@@ -42,6 +43,7 @@ export default class ConditionalRecordForm extends LightningElement {
         this._configLoaded = false;
         this._config = { items: [], clearWhenHidden: false, columns: 1, valueRules: [] };
         this.clientFieldValues = [];
+        this.collapsedSections = [];
         this._invalidAddresses.clear();
         this._createdRecordId = undefined;
     }
@@ -120,9 +122,62 @@ export default class ConditionalRecordForm extends LightningElement {
         return this.recordId || this._createdRecordId;
     }
 
-    get visibleItems() {
+    get accordionLayout() {
+        return this._config.sectionLayout === 'accordion';
+    }
+
+    get sectionAssignments() {
+        const assignments = new Map();
+        if (!this.accordionLayout) return assignments;
+
+        const sections = new Map(this._config.items
+            .filter((item) => item.kind === 'section' && item.key)
+            .map((item) => [item.key, item]));
+        let currentSection;
+        for (const item of this._config.items) {
+            if (item.kind === 'section') {
+                currentSection = item;
+            } else {
+                const section = item.sectionKey ? sections.get(item.sectionKey) : currentSection;
+                if (section) assignments.set(item, section);
+            }
+        }
+        return assignments;
+    }
+
+    get layoutGroups() {
+        const assignments = this.sectionAssignments;
+        const items = this.getVisibleItems(assignments);
+        const unsectioned = { key: 'unsectioned', items: [] };
+        if (!this.accordionLayout) return [{ ...unsectioned, items }];
+
+        const groups = new Map();
+        for (const item of items.filter((entry) => entry.isSection)) {
+            const key = `section-${item.itemIndex}`;
+            const expanded = !this.collapsedSections.includes(key);
+            groups.set(item.itemIndex, {
+                key,
+                panelId: `${key}-content`,
+                heading: item.heading || 'Section',
+                description: item.description,
+                isAccordion: true,
+                sectionClass: 'slds-section slds-m-bottom_small',
+                expanded,
+                collapsed: !expanded,
+                icon: expanded ? 'utility:chevrondown' : 'utility:chevronright',
+                items: []
+            });
+        }
+        for (const item of items.filter((entry) => !entry.isSection)) {
+            (groups.get(item.sectionIndex) || unsectioned).items.push(item);
+        }
+        return [...(unsectioned.items.length ? [unsectioned] : []), ...groups.values()];
+    }
+
+    getVisibleItems(assignments) {
         let activeColumns = this._config.columns;
         const values = this.values;
+        const sectionIndexes = new Map(this._config.items.map((item, index) => [item, index]));
         return this._config.items
             .map((item, index) => {
                 const kind = item.kind || (item.key ? 'field' : 'text');
@@ -131,7 +186,10 @@ export default class ConditionalRecordForm extends LightningElement {
                         ? Number(item.columns)
                         : this._config.columns;
                 }
-                const itemColumns = activeColumns;
+                const section = assignments.get(item);
+                const itemColumns = this.accordionLayout && kind !== 'section'
+                    ? ([1, 2].includes(Number(section?.columns)) ? Number(section.columns) : this._config.columns)
+                    : activeColumns;
                 const isField = kind === 'field' && Boolean(item.key);
                 const isCheckbox = isField && item.type === 'checkbox';
                 const inputText = isField ? getInputText(item, this._config.inputText) : {};
@@ -146,8 +204,9 @@ export default class ConditionalRecordForm extends LightningElement {
                     ...inputText,
                     kind,
                     itemColumns,
-                    renderKey: item.key || `item-${index}`,
+                    renderKey: item.key ? `${kind}-${item.key}` : `item-${index}`,
                     itemIndex: index,
+                    sectionIndex: sectionIndexes.get(section),
                     isSpacer,
                     columnClass: fullWidth
                         ? 'slds-col slds-size_1-of-1 slds-m-bottom_small'
@@ -193,7 +252,7 @@ export default class ConditionalRecordForm extends LightningElement {
                 };
             })
             .filter((item) => item.kind !== 'spacer' || item.itemColumns === 2)
-            .filter((item) => this.isItemVisible(item));
+            .filter((item) => this.isItemVisible(this._config.items[item.itemIndex], assignments));
     }
 
     parseConfig(configSource) {
@@ -209,11 +268,13 @@ export default class ConditionalRecordForm extends LightningElement {
                 items,
                 clearWhenHidden: Boolean(parsed?.clearWhenHidden),
                 columns: Number(parsed?.columns) === 2 ? 2 : 1,
+                sectionLayout: parsed?.sectionLayout === 'accordion' ? 'accordion' : 'flat',
                 showSubmitButton: parsed?.showSubmitButton !== false,
                 submissionMode: parsed?.submissionMode === 'event' ? 'event' : 'apex',
                 inputText: parsed?.inputText,
                 valueRules: Array.isArray(parsed?.valueRules) ? parsed.valueRules : []
             };
+            this.collapsedSections = [];
             this._ruleClearedFields = new Set();
             this._invalidAddresses.clear();
             this.showSubmitButton = this._config.showSubmitButton;
@@ -247,6 +308,13 @@ export default class ConditionalRecordForm extends LightningElement {
             this.showToast('Invalid form configuration', error.message, 'error');
             return false;
         }
+    }
+
+    handleSectionToggle(event) {
+        const key = event.currentTarget.dataset.sectionId;
+        this.collapsedSections = this.collapsedSections.includes(key)
+            ? this.collapsedSections.filter((section) => section !== key)
+            : [...this.collapsedSections, key];
     }
 
     handleFieldChange(event) {
@@ -400,7 +468,8 @@ export default class ConditionalRecordForm extends LightningElement {
         await Promise.resolve();
         if (this.isSubmitting || !this._configLoaded) return;
         const currentValues = this.values;
-        const visibleFields = this.formFields.filter((field) => this.isItemVisible(field));
+        const assignments = this.sectionAssignments;
+        const visibleFields = this.formFields.filter((field) => this.isItemVisible(field, assignments));
         const inputs = new Map([...this.template.querySelectorAll('[data-field-key]')]
             .map((input) => [input.dataset.fieldKey, input]));
         const invalidFields = visibleFields.filter((field) => {
@@ -408,6 +477,12 @@ export default class ConditionalRecordForm extends LightningElement {
             return !input || !this.reportFieldValidity(input, field, currentValues);
         });
         if (invalidFields.length) {
+            const invalidSections = new Set(invalidFields
+                .map((field) => assignments.get(field))
+                .filter(Boolean)
+                .map((section) => `section-${this._config.items.indexOf(section)}`));
+            this.collapsedSections = this.collapsedSections.filter((key) => !invalidSections.has(key));
+            await Promise.resolve();
             inputs.get(invalidFields[0].key)?.focus?.();
             return;
         }
@@ -428,7 +503,7 @@ export default class ConditionalRecordForm extends LightningElement {
             }));
         if (this._config.clearWhenHidden) {
             this.formFields
-                .filter((field) => !this.isItemVisible(field))
+                .filter((field) => !this.isItemVisible(field, assignments))
                 .flatMap((field) => this.getFieldKeys(field))
                 .forEach((key) => {
                     if (!fields.some((fieldValue) => fieldValue.key === key)) fields.push({ key, valueJson: 'null' });
@@ -485,7 +560,11 @@ export default class ConditionalRecordForm extends LightningElement {
         this.clientFieldValues = updated;
     }
 
-    isItemVisible(item) {
+    isItemVisible(item, assignments) {
+        if (this.accordionLayout) {
+            const section = assignments.get(item);
+            return (!section || this.conditionsPass(section)) && this.conditionsPass(item);
+        }
         if (item.sectionKey) {
             const parentSection = this._config.items.find((candidate) =>
                 candidate.kind === 'section' && candidate.key === item.sectionKey
