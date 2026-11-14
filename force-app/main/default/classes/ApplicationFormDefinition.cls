@@ -53,7 +53,7 @@ public class ApplicationFormDefinition implements ConditionalRecordFormDefinitio
                 '{"kind":"field","key":"ApplicationForm.sameAsBilling","label":"Mailing address is the same as billing address",' +
                     '"type":"checkbox","clientOnly":true,"defaultValue":false},' +
                 '{"kind":"field","key":"mailingAddress","label":"Mailing address","type":"address","addressPreset":"US",' +
-                    '"defaultCountry":"","readOnlyWhen":{"field":"ApplicationForm.sameAsBilling","operator":"equals","value":true},' +
+                    '"defaultCountry":"United States","readOnlyWhen":{"field":"ApplicationForm.sameAsBilling","operator":"equals","value":true},' +
                     '"fieldKeys":{"street":"ApplicationForm.mailingStreet","city":"ApplicationForm.mailingCity",' +
                     '"province":"ApplicationForm.mailingState","postalCode":"ApplicationForm.mailingPostalCode",' +
                     '"country":"ApplicationForm.mailingCountry"}}' +
