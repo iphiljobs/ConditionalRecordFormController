@@ -191,9 +191,32 @@ export function fieldError(field, rawValue) {
     }
 }
 
+const US_COUNTRY = 'United States';
+const US_STATES = [
+    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
+    'Delaware', 'District of Columbia', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois',
+    'Indiana', 'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts',
+    'Michigan', 'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+    'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota',
+    'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
+    'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia',
+    'Wisconsin', 'Wyoming'
+].map((name) => ({ label: name, value: name }));
+
+export function addressCountryDefault(field) {
+    const options = addressOptions(field, 'country');
+    const value = field.defaultCountry ?? (field.addressPreset === 'US' ? US_COUNTRY : undefined);
+    return value && (!options?.length || options.some((option) => option.value === value))
+        ? value : undefined;
+}
+
 export function addressOptions(field, part) {
-    if (part === 'country') return field.countryOptions;
-    if (part === 'province') return field.provinceOptions;
+    if (part === 'country') {
+        return field.countryOptions ?? (field.addressPreset === 'US' ? [{ label: US_COUNTRY, value: US_COUNTRY }] : undefined);
+    }
+    if (part === 'province') {
+        return field.provinceOptions ?? (field.addressPreset === 'US' ? US_STATES : undefined);
+    }
     return undefined;
 }
 

@@ -5,7 +5,7 @@ import saveRecord from '@salesforce/apex/ConditionalRecordFormController.saveRec
 import loadFormData from '@salesforce/apex/ConditionalRecordFormController.loadFormData';
 import Toast from 'lightning/toast';
 import {
-    ADDRESS_PARTS, INPUT_TYPES, addressError, addressOptions, fieldError, formatMessage, getInputText, normalizeValue
+    ADDRESS_PARTS, INPUT_TYPES, addressCountryDefault, addressError, addressOptions, fieldError, formatMessage, getInputText, normalizeValue
 } from 'c/conditionalRecordFormInput';
 
 const OPERATORS = new Set([
@@ -234,6 +234,8 @@ export default class ConditionalRecordForm extends LightningElement {
                     isAddress: isField && item.type === 'address',
                     isPicklist: isField && item.type === 'picklist',
                     addressRequired: item.required && ADDRESS_PARTS.every((part) => item.fieldKeys?.[part]),
+                    countryOptions: item.type === 'address' ? addressOptions(item, 'country') : undefined,
+                    provinceOptions: item.type === 'address' ? addressOptions(item, 'province') : undefined,
                     address: {
                         street: values[item.fieldKeys?.street] || '',
                         city: values[item.fieldKeys?.city] || '',
@@ -285,6 +287,15 @@ export default class ConditionalRecordForm extends LightningElement {
 
             const defaults = { ...this.values };
             this.formFields.forEach((field) => {
+                if (field.type === 'address') {
+                    const countryKey = field.fieldKeys?.country;
+                    const defaultCountry = addressCountryDefault(field);
+                    if (!this.effectiveRecordId && countryKey && defaultCountry !== undefined &&
+                        !Object.prototype.hasOwnProperty.call(defaults, countryKey)) {
+                        defaults[countryKey] = defaultCountry;
+                    }
+                    return;
+                }
                 if (field.defaultValue !== undefined &&
                     !Object.prototype.hasOwnProperty.call(defaults, field.key)) {
                     defaults[field.key] = field.defaultValue;

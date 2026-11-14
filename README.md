@@ -99,6 +99,26 @@ from the org. The password-style input masks `AccountNumber` on screen and is
 intended for an account number. The search-style input captures the Account
 `Site` value. The lookup searches for a parent Account.
 
+## Address country and state picklists
+
+Select **United States** under **Address picklist preset** for an address field
+in the config builder, or add `"addressPreset": "US"` to the address item in
+the provider JSON. The Account Intake billing address uses this preset. It
+includes United States and all 50 states plus D.C. New records default to United
+States and leave the state for the user to select. Existing records load their
+saved country and state.
+
+Use `countryOptions` and `provinceOptions` (arrays of `{ "label": "...",
+"value": "..." }`) to replace either list. Use `defaultCountry` to supply
+a different create-mode value that matches the configured country options.
+Without a preset or options, that part remains free text.
+
+The preset saves full names for the sample's `BillingCountry` and `BillingState`
+mappings. For code fields or custom integration values, set the option values
+and default country to the values accepted by your org. Include existing
+stored values in the configured lists if users need to keep those selections
+when editing a record.
+
 ## Input formatting and validation
 
 Default placeholders and field validation messages live in

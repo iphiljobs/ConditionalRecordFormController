@@ -315,6 +315,50 @@ describe('c-conditional-record-form', () => {
         expect(findField(element, 'lightning-input', DETAILS)).toBeDefined();
     });
 
+    it('defaults new US addresses to United States and submits its stored value', async () => {
+        const country = `${FORM_KEY}.Country`;
+        const province = `${FORM_KEY}.Province`;
+        const element = createComponent();
+        await emitConfig({
+            formKey: FORM_KEY, submissionMode: 'event',
+            items: [{
+                key: 'address', label: 'Address', type: 'address', addressPreset: 'US',
+                fieldKeys: { country, province }
+            }]
+        });
+        const address = element.shadowRoot.querySelector('lightning-input-address');
+        expect(address.countryOptions).toEqual([{ label: 'United States', value: 'United States' }]);
+        expect(address.provinceOptions).toHaveLength(51);
+        expect(address.provinceOptions).toContainEqual({ label: 'District of Columbia', value: 'District of Columbia' });
+        expect(address.country).toBe('United States');
+        expect(address.province).toBe('');
+        expect(await element.submit()).toEqual([{ key: country, valueJson: '"United States"' }]);
+    });
+
+    it('preserves an existing country and uses custom country and state options', async () => {
+        const country = `${FORM_KEY}.Country`;
+        const province = `${FORM_KEY}.Province`;
+        loadFormData.mockResolvedValue({ fields: [
+            { key: country, valueJson: '"CA"' }, { key: province, valueJson: '"ON"' }
+        ] });
+        const element = createComponent({ recordId: '001000000000001AAA' });
+        await emitConfig({
+            formKey: FORM_KEY, submissionMode: 'event',
+            items: [{
+                key: 'address', label: 'Address', type: 'address', addressPreset: 'US',
+                fieldKeys: { country, province }, defaultCountry: 'US',
+                countryOptions: [{ label: 'United States', value: 'US' }, { label: 'Canada', value: 'CA' }],
+                provinceOptions: [{ label: 'Ontario', value: 'ON' }]
+            }]
+        });
+        const address = element.shadowRoot.querySelector('lightning-input-address');
+        expect(address.country).toBe('CA');
+        expect(address.provinceOptions).toEqual([{ label: 'Ontario', value: 'ON' }]);
+        expect(await element.submit()).toEqual([
+            { key: province, valueJson: '"ON"' }, { key: country, valueJson: '"CA"' }
+        ]);
+    });
+
     it('rejects configuration for a different form key', async () => {
         const element = createComponent();
         await emitConfig({ ...FORM_CONFIG, formKey: 'AnotherForm' });

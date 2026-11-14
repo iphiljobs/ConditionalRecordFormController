@@ -201,6 +201,9 @@
           body += input('State / province label',`${base}.provinceLabel`,item.provinceLabel || 'State/Province');
           body += input('Postal code label',`${base}.postalCodeLabel`,item.postalCodeLabel || 'Postal Code');
           body += input('Country label',`${base}.countryLabel`,item.countryLabel || 'Country');
+          body += select('Address picklist preset', `${base}.addressPreset`, item.addressPreset || '', [['','Custom or free text'],['US','United States']]);
+          body += input('Default country value (create only)', `${base}.defaultCountry`, item.defaultCountry || '', 'text', 'placeholder="United States"');
+          body += '<div class="hint">The U.S. preset includes all 50 states and D.C. Enter custom options to replace the corresponding preset list. Without a preset, leave a list empty to use free text.</div>';
           body += textarea('Country options (label|value per line)',`${base}.countryOptionsText`,item.countryOptionsText ?? optionText(item.countryOptions),'United States|United States');
           body += textarea('State / province options (label|value per line)',`${base}.provinceOptionsText`,item.provinceOptionsText ?? optionText(item.provinceOptions),'California|California');
         }
@@ -292,6 +295,8 @@
               ['streetLabel','cityLabel','provinceLabel','postalCodeLabel','countryLabel'].forEach(k=>{if(item[k]) out[k]=item[k];});
               const countries=parseOptions(item.countryOptionsText ?? optionText(item.countryOptions));
               const provinces=parseOptions(item.provinceOptionsText ?? optionText(item.provinceOptions));
+              if(item.addressPreset==='US') out.addressPreset='US';
+              if(item.defaultCountry?.trim()) out.defaultCountry=item.defaultCountry.trim();
               if(countries.length) out.countryOptions=countries;
               if(provinces.length) out.provinceOptions=provinces;
             }

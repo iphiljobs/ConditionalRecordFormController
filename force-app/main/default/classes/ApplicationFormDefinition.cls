@@ -41,7 +41,7 @@ public class ApplicationFormDefinition implements ConditionalRecordFormDefinitio
                 '{"kind":"field","key":"ApplicationForm.preferredTime","label":"Preferred time","type":"time"},' +
                 '{"kind":"field","key":"ApplicationForm.appointmentDateTime","label":"Appointment date and time","type":"datetime"},' +
                 '{"kind":"section","key":"billingAddress","heading":"Billing address","columns":1},' +
-                '{"kind":"field","key":"billingAddress","label":"Billing address","type":"address","fieldKeys":{' +
+                '{"kind":"field","key":"billingAddress","label":"Billing address","type":"address","addressPreset":"US","fieldKeys":{' +
                     '"street":"ApplicationForm.billingStreet","city":"ApplicationForm.billingCity",' +
                     '"province":"ApplicationForm.billingState","postalCode":"ApplicationForm.billingPostalCode",' +
                     '"country":"ApplicationForm.billingCountry"}}' +
