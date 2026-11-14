@@ -1,4 +1,7 @@
 public class ApplicationFormDefinition implements ConditionalRecordFormDefinition {
+    // Use 'accordion' for collapsible sections or 'flat' for standard headings.
+    private static final String SECTION_LAYOUT = 'accordion';
+
     public String getFormKey() {
         return 'ApplicationForm';
     }
@@ -20,6 +23,7 @@ public class ApplicationFormDefinition implements ConditionalRecordFormDefinitio
 
         return '{"formKey":"ApplicationForm","title":"Account Intake","description":"Example form definition; copy this provider pattern for each form.",' +
             '"submitLabel":"Save","columns":2,"showSubmitButton":true,"submissionMode":"apex","clearWhenHidden":false,' +
+            '"sectionLayout":' + JSON.serialize(SECTION_LAYOUT) + ',' +
             '"inputText":{"fields":{' +
                 '"ApplicationForm.password":{"help":"Enter an account number. Do not enter a password or secret."},' +
                 '"ApplicationForm.searchText":{"placeholder":"Enter a site name"}}},' +
