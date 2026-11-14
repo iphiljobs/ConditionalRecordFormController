@@ -3,7 +3,7 @@
     <apiVersion>66.0</apiVersion>
     <isExposed>true</isExposed>
     <masterLabel>Conditional Record Form</masterLabel>
-    <description>Configurable form using an imported JavaScript config and server-side Salesforce field mappings.</description>
+    <description>Configurable form using an Apex form provider for configuration and server-side field mappings.</description>
     <targets>
         <target>lightning__RecordPage</target>
         <target>lightning__AppPage</target>
@@ -13,7 +13,7 @@
     </targets>
     <targetConfigs>
         <targetConfig targets="lightning__RecordPage,lightning__AppPage,lightning__HomePage,lightningCommunity__Default">
-            <property name="formKey" type="String" label="Form Key" description="Must match the formKey in the imported config and the server-side field mappings." />
+            <property name="formKey" type="String" label="Form Key" description="Selects an allowlisted Apex form provider that supplies the form config and field mappings." />
             <property name="recordId" type="String" label="Record ID" description="Optional record ID; leave blank to create a record." />
         </targetConfig>
     </targetConfigs>

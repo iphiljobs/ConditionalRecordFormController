@@ -1,6 +1,6 @@
-import { LightningElement, api } from 'lwc';
-import DEFAULT_FORM_CONFIG from './conditionalRecordFormConfig';
+import { LightningElement, api, wire } from 'lwc';
 import { VISIBILITY_EVALUATORS } from './conditionalRecordFormVisibility';
+import getFormConfig from '@salesforce/apex/ConditionalRecordFormController.getFormConfig';
 import saveRecord from '@salesforce/apex/ConditionalRecordFormController.saveRecord';
 import loadFormData from '@salesforce/apex/ConditionalRecordFormController.loadFormData';
 import Toast from 'lightning/toast';
@@ -36,12 +36,13 @@ export default class ConditionalRecordForm extends LightningElement {
     }
 
     set formKey(value) {
-        this._formKey = value;
-        if (this.isConnected && this._configLoaded) {
-            this.clientFieldValues = [];
-            this._createdRecordId = undefined;
-            this.loadRecordValues();
-        }
+        const nextFormKey = value ? value.trim() : undefined;
+        if (nextFormKey === this._formKey) return;
+        this._formKey = nextFormKey;
+        this._configLoaded = false;
+        this._config = { items: [], clearWhenHidden: false, columns: 1, valueRules: [] };
+        this.clientFieldValues = [];
+        this._createdRecordId = undefined;
     }
 
     @api recordId;
@@ -55,13 +56,17 @@ export default class ConditionalRecordForm extends LightningElement {
     _createdRecordId;
     _ruleClearedFields = new Set();
 
-    connectedCallback() {
-        if (!this.formKey && DEFAULT_FORM_CONFIG?.formKey) {
-            this._formKey = DEFAULT_FORM_CONFIG.formKey;
+    @wire(getFormConfig, { formKey: '$_formKey' })
+    wiredFormConfig({ data, error }) {
+        if (data) {
+            this.parseConfig(data);
+            this._configLoaded = true;
+            this.loadRecordValues();
+        } else if (error) {
+            this._configLoaded = false;
+            this._config = { items: [], clearWhenHidden: false, columns: 1, valueRules: [] };
+            this.showToast('Unable to load form configuration', this.getErrorMessage(error), 'error');
         }
-        this.parseConfig(DEFAULT_FORM_CONFIG);
-        this._configLoaded = true;
-        this.loadRecordValues();
     }
 
     async loadRecordValues() {

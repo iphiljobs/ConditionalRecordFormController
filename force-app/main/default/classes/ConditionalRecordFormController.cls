@@ -1,10 +1,28 @@
 public with sharing class ConditionalRecordFormController {
     @AuraEnabled(cacheable=true)
+    public static String getFormConfig(String formKey) {
+        ConditionalRecordFormDefinition definition = getDefinition(formKey);
+        String configJson = definition.getConfigJson();
+        try {
+            Map<String, Object> config = (Map<String, Object>) JSON.deserializeUntyped(configJson);
+            if (String.valueOf(config.get('formKey')) != definition.getFormKey()) {
+                throw new AuraHandledException('The form configuration key does not match its provider.');
+            }
+        } catch (AuraHandledException handledError) {
+            throw handledError;
+        } catch (Exception error) {
+            throw new AuraHandledException('The form configuration is invalid.');
+        }
+        return configJson;
+    }
+
+    @AuraEnabled(cacheable=true)
     public static ConditionalRecordFormData loadFormData(String formKey, String recordId, List<String> fieldKeys) {
         ConditionalRecordFormData result = new ConditionalRecordFormData();
         if (String.isBlank(recordId)) return result;
 
-        String objectApiName = getFormObjectApiName(formKey);
+        ConditionalRecordFormDefinition definition = getDefinition(formKey);
+        String objectApiName = getFormObjectApiName(definition);
         Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApiName);
         Schema.DescribeSObjectResult objectDescribe = objectType.getDescribe();
         if (!objectDescribe.isAccessible()) {
@@ -21,13 +39,13 @@ public with sharing class ConditionalRecordFormController {
             throw new AuraHandledException('The record ID does not belong to this form.');
         }
 
-        Map<String, Conditional_Form_Field__mdt> mappings = getFieldMappings(formKey);
+        Map<String, String> mappings = getFieldApiNames(definition);
         Map<String, String> keyToApiName = new Map<String, String>();
         Set<String> apiNames = new Set<String>();
         if (fieldKeys != null) {
             for (String fieldKey : fieldKeys) {
-                Conditional_Form_Field__mdt mapping = requireMapping(mappings, fieldKey);
-                Schema.SObjectField token = findField(objectDescribe.fields.getMap(), mapping.Field_API_Name__c);
+                String configuredApiName = requireMapping(mappings, fieldKey);
+                Schema.SObjectField token = findField(objectDescribe.fields.getMap(), configuredApiName);
                 if (token == null || !token.getDescribe().isAccessible()) {
                     throw new AuraHandledException('You do not have access to one or more form fields.');
                 }
@@ -68,9 +86,11 @@ public with sharing class ConditionalRecordFormController {
         String searchTerm,
         String selectedRecordId
     ) {
-        Map<String, Conditional_Form_Field__mdt> mappings = getFieldMappings(formKey);
-        Conditional_Form_Field__mdt mapping = requireMapping(mappings, fieldKey);
-        String targetObjectApiName = mapping.Lookup_Object_API_Name__c;
+        ConditionalRecordFormDefinition definition = getDefinition(formKey);
+        Map<String, String> mappings = getFieldApiNames(definition);
+        String relationshipApiName = requireMapping(mappings, fieldKey);
+        Map<String, String> lookupMappings = definition.getLookupObjectApiNames();
+        String targetObjectApiName = lookupMappings == null ? null : lookupMappings.get(fieldKey);
         if (String.isBlank(targetObjectApiName)) {
             throw new AuraHandledException('The related-record field is not configured for search.');
         }
@@ -79,11 +99,11 @@ public with sharing class ConditionalRecordFormController {
         if (targetType == null || !targetType.getDescribe().isAccessible()) {
             throw new AuraHandledException('You do not have access to search this related record.');
         }
-        String sourceObjectApiName = getFormObjectApiName(formKey);
+        String sourceObjectApiName = getFormObjectApiName(definition);
         Schema.SObjectType sourceType = Schema.getGlobalDescribe().get(sourceObjectApiName);
         Schema.SObjectField relationshipToken = findField(
             sourceType.getDescribe().fields.getMap(),
-            mapping.Field_API_Name__c
+            relationshipApiName
         );
         if (relationshipToken == null || relationshipToken.getDescribe().getType() != Schema.DisplayType.Reference ||
             !relationshipToken.getDescribe().isAccessible()) {
@@ -149,7 +169,8 @@ public with sharing class ConditionalRecordFormController {
                 payloadJson,
                 ConditionalRecordFormSubmission.class
             );
-            String objectApiName = getFormObjectApiName(payload.formKey);
+            ConditionalRecordFormDefinition definition = getDefinition(payload.formKey);
+            String objectApiName = getFormObjectApiName(definition);
             Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApiName);
             Schema.DescribeSObjectResult objectDescribe = objectType.getDescribe();
             Boolean isUpdate = !String.isBlank(payload.recordId);
@@ -169,7 +190,7 @@ public with sharing class ConditionalRecordFormController {
                 record.put('Id', recordId);
             }
 
-            Map<String, Conditional_Form_Field__mdt> mappings = getFieldMappings(payload.formKey);
+            Map<String, String> mappings = getFieldApiNames(definition);
             Set<String> submittedKeys = new Set<String>();
             if (payload.fields == null) {
                 throw new AuraHandledException('The form field values are missing or invalid.');
@@ -179,8 +200,8 @@ public with sharing class ConditionalRecordFormController {
                     throw new AuraHandledException('The form contains an invalid or duplicate field.');
                 }
                 submittedKeys.add(wrapper.key);
-                Conditional_Form_Field__mdt mapping = requireMapping(mappings, wrapper.key);
-                Schema.SObjectField token = findField(objectDescribe.fields.getMap(), mapping.Field_API_Name__c);
+                String configuredApiName = requireMapping(mappings, wrapper.key);
+                Schema.SObjectField token = findField(objectDescribe.fields.getMap(), configuredApiName);
                 if (token == null) {
                     throw new AuraHandledException('The form contains an invalid field mapping.');
                 }
@@ -212,51 +233,39 @@ public with sharing class ConditionalRecordFormController {
         }
     }
 
-    private static String getFormObjectApiName(String formKey) {
-        if (String.isBlank(formKey)) {
-            throw new AuraHandledException('The form key is required.');
+    private static ConditionalRecordFormDefinition getDefinition(String formKey) {
+        ConditionalRecordFormDefinition definition = ConditionalRecordFormRegistry.getDefinition(formKey);
+        if (definition == null || String.isBlank(definition.getFormKey()) ||
+            definition.getFormKey() != formKey || String.isBlank(definition.getObjectApiName())) {
+            throw new AuraHandledException('This form is not configured correctly.');
         }
-        String objectApiName;
-        for (Conditional_Form_Field__mdt mapping : Conditional_Form_Field__mdt.getAll().values()) {
-            if (mapping.Form_Key__c != formKey) continue;
-            if (String.isBlank(mapping.Object_API_Name__c)) {
-                throw new AuraHandledException('A form field mapping is missing its form object API name.');
-            }
-            if (objectApiName == null) objectApiName = mapping.Object_API_Name__c;
-            else if (!objectApiName.equalsIgnoreCase(mapping.Object_API_Name__c)) {
-                throw new AuraHandledException('The form field mappings specify inconsistent object API names.');
-            }
-        }
-        if (String.isBlank(objectApiName)) throw new AuraHandledException('This form is not configured.');
-        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(objectApiName);
+        return definition;
+    }
+
+    private static String getFormObjectApiName(ConditionalRecordFormDefinition definition) {
+        Schema.SObjectType objectType = Schema.getGlobalDescribe().get(definition.getObjectApiName());
         if (objectType == null) throw new AuraHandledException('This form is not configured correctly.');
         return objectType.getDescribe().getName();
     }
 
-    private static Map<String, Conditional_Form_Field__mdt> getFieldMappings(String formKey) {
-        getFormObjectApiName(formKey);
-        Map<String, Conditional_Form_Field__mdt> mappings = new Map<String, Conditional_Form_Field__mdt>();
-        for (Conditional_Form_Field__mdt mapping : Conditional_Form_Field__mdt.getAll().values()) {
-            if (mapping.Form_Key__c == formKey && !String.isBlank(mapping.Field_Key__c)) {
-                String qualifiedKey = mapping.Form_Key__c + '.' + mapping.Field_Key__c;
-                if (mappings.containsKey(qualifiedKey)) {
-                    throw new AuraHandledException('The form has duplicate server-side field mappings.');
-                }
-                mappings.put(qualifiedKey, mapping);
+    private static Map<String, String> getFieldApiNames(ConditionalRecordFormDefinition definition) {
+        Map<String, String> mappings = definition.getFieldApiNames();
+        if (mappings == null || mappings.isEmpty()) {
+            throw new AuraHandledException('This form has no server-side field mappings.');
+        }
+        String requiredPrefix = definition.getFormKey() + '.';
+        for (String key : mappings.keySet()) {
+            if (String.isBlank(key) || !key.startsWith(requiredPrefix) || String.isBlank(mappings.get(key))) {
+                throw new AuraHandledException('This form contains an invalid server-side field mapping.');
             }
         }
         return mappings;
     }
 
-    private static Conditional_Form_Field__mdt requireMapping(
-        Map<String, Conditional_Form_Field__mdt> mappings,
-        String fieldKey
-    ) {
-        Conditional_Form_Field__mdt mapping = mappings.get(fieldKey);
-        if (mapping == null || String.isBlank(mapping.Field_API_Name__c)) {
-            throw new AuraHandledException('A form field is not configured.');
-        }
-        return mapping;
+    private static String requireMapping(Map<String, String> mappings, String fieldKey) {
+        String apiName = mappings.get(fieldKey);
+        if (String.isBlank(apiName)) throw new AuraHandledException('A form field is not configured.');
+        return apiName;
     }
 
     private static Schema.SObjectField findField(Map<String, Schema.SObjectField> fieldTokens, String fieldApiName) {
