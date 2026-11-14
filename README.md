@@ -65,6 +65,25 @@ The browser receives JSON like this from `getFormConfig`. It contains no Salesfo
 
 In the provider's `getFieldApiNames()`, map `ApplicationForm.applicantType` and `ApplicationForm.organizationName` to their actual Salesforce field API names. Those names remain in Apex source and are never returned in the config or `formsubmit` event.
 
+## Account Intake sample fields
+
+`ApplicationFormDefinition` demonstrates all 14 input types. Deploy the sample
+provider with the five Account fields under `objects/Account/fields`. Grant
+the intended form users Read and Edit access to the mapped fields as needed.
+
+| Account field | Salesforce field type |
+| --- | --- |
+| `Form_Email__c` | Email |
+| `Form_Active__c` | Checkbox (defaults to unchecked) |
+| `Form_Follow_Up_Date__c` | Date |
+| `Form_Preferred_Time__c` | Time |
+| `Form_Appointment_Date_Time__c` | Date/Time |
+
+The sample uses the standard Account Type picklist and loads its active values
+from the org. The password-style input masks `AccountNumber` on screen and is
+intended for an account number. The search-style input captures the Account
+`Site` value. The lookup searches for a parent Account.
+
 ## Input formatting and validation
 
 Default placeholders and field validation messages live in
