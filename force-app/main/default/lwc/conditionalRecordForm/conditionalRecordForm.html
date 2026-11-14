@@ -57,6 +57,33 @@
                                             onlookupchange={handleLookupChange}>
                                         </c-conditional-record-lookup>
                                     </template>
+                                    <template lwc:elseif={item.hideAddressCountry}>
+                                        <fieldset data-field-key={item.key}>
+                                            <legend class="slds-form-element__legend slds-form-element__label">{item.label}</legend>
+                                            <template for:each={item.addressControls} for:item="control">
+                                                <div key={control.part}>
+                                                    <lightning-textarea lwc:if={control.isStreet}
+                                                        label={control.label} value={control.value}
+                                                        placeholder={control.placeholder} required={control.required}
+                                                        disabled={item.addressDisabled} data-field-key={item.key}
+                                                        data-address-part={control.part} onchange={handleAddressPartChange}>
+                                                    </lightning-textarea>
+                                                    <lightning-combobox lwc:elseif={control.isPicklist}
+                                                        label={control.label} value={control.value} options={control.options}
+                                                        placeholder={control.placeholder} required={control.required}
+                                                        disabled={item.addressDisabled} data-field-key={item.key}
+                                                        data-address-part={control.part} onchange={handleAddressPartChange}>
+                                                    </lightning-combobox>
+                                                    <lightning-input lwc:else type="text"
+                                                        label={control.label} value={control.value}
+                                                        placeholder={control.placeholder} required={control.required}
+                                                        disabled={item.addressDisabled} data-field-key={item.key}
+                                                        data-address-part={control.part} onchange={handleAddressPartChange}>
+                                                    </lightning-input>
+                                                </div>
+                                            </template>
+                                        </fieldset>
+                                    </template>
                                     <template lwc:elseif={item.isAddress}>
                                         <lightning-input-address
                                             address-label={item.label}

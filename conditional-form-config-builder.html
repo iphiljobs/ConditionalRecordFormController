@@ -204,6 +204,7 @@
           body += input('Country label',`${base}.countryLabel`,item.countryLabel || 'Country');
           body += select('Address picklist preset', `${base}.addressPreset`, item.addressPreset || '', [['','Custom or free text'],['US','United States']]);
           body += input('Default country value (create only)', `${base}.defaultCountry`, item.defaultCountry || '', 'text', 'placeholder="United States"');
+          body += checkbox('Show the country picker even when a default is configured', `${base}.showDefaultCountry`, item.showDefaultCountry);
           body += '<div class="hint">The U.S. preset includes all 50 states and D.C. Enter custom options to replace the corresponding preset list. Without a preset, leave a list empty to use free text.</div>';
           body += textarea('Country options (label|value per line)',`${base}.countryOptionsText`,item.countryOptionsText ?? optionText(item.countryOptions),'United States|United States');
           body += textarea('State / province options (label|value per line)',`${base}.provinceOptionsText`,item.provinceOptionsText ?? optionText(item.provinceOptions),'California|California');
@@ -302,6 +303,7 @@
               const provinces=parseOptions(item.provinceOptionsText ?? optionText(item.provinceOptions));
               if(item.addressPreset==='US') out.addressPreset='US';
               if(item.defaultCountry?.trim()) out.defaultCountry=item.defaultCountry.trim();
+              if(item.showDefaultCountry) out.hideDefaultCountry=false;
               if(countries.length) out.countryOptions=countries;
               if(provinces.length) out.provinceOptions=provinces;
               const readOnly=nonEmptyConditions(item.readOnlyWhen);

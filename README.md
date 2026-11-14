@@ -112,6 +112,11 @@ Use `countryOptions` and `provinceOptions` (arrays of `{ "label": "...",
 "value": "..." }`) to replace either list. Use `defaultCountry` to supply
 a different create-mode value that matches the configured country options.
 Without a preset or options, that part remains free text.
+When an address has a valid default country, the country control is hidden
+and the country is included in the payload only when State/Province has a
+value. Editing an existing record preserves its stored country when present.
+Use `"hideDefaultCountry": false` to show the country picker and retain
+normal country submission for that address.
 
 The preset saves full names for the sample's `BillingCountry` and `BillingState`
 mappings. For code fields or custom integration values, set the option values

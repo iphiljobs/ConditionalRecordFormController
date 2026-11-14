@@ -19,6 +19,15 @@ const OPERATORS = new Set([
     'lessThan'
 ]);
 
+const ADDRESS_LABELS = {
+    street: 'Street', city: 'City', province: 'State/Province', postalCode: 'Postal Code'
+};
+
+function hidesAddressCountry(field) {
+    return field.type === 'address' && field.hideDefaultCountry !== false &&
+        Boolean(field.fieldKeys?.country && addressCountryDefault(field));
+}
+
 const DATE_STYLES = new Set(['short', 'medium', 'long']);
 const TIME_STYLES = new Set(['short', 'medium', 'long']);
 const NUMBER_FORMATS = new Set(['decimal', 'currency', 'percent', 'percent-fixed']);
@@ -200,6 +209,7 @@ export default class ConditionalRecordForm extends LightningElement {
                 const inputText = isField ? getInputText(item, this._config.inputText) : {};
                 const storedValue = Object.prototype.hasOwnProperty.call(values, item.key)
                     ? values[item.key] : item.defaultValue;
+                const hideAddressCountry = hidesAddressCountry(item);
                 const isSpacer = kind === 'spacer';
                 const fullWidth = kind === 'section' || kind === 'text' ||
                     (isField && (item.type === 'address' || item.fullWidth === true || item.span === 2)) ||
@@ -241,6 +251,19 @@ export default class ConditionalRecordForm extends LightningElement {
                         visibleWhenLogic: item.readOnlyWhenLogic
                     }, values),
                     isAddress: isField && item.type === 'address',
+                    hideAddressCountry,
+                    addressControls: hideAddressCountry
+                        ? Object.entries(ADDRESS_LABELS).map(([part, label]) => ({
+                            part,
+                            label: item[`${part}Label`] || label,
+                            placeholder: inputText.addressPlaceholders[part],
+                            value: values[item.fieldKeys?.[part]] ?? '',
+                            required: Boolean(item.required && item.fieldKeys?.[part]),
+                            options: addressOptions(item, part),
+                            isStreet: part === 'street',
+                            isPicklist: Boolean(addressOptions(item, part)?.length)
+                        }))
+                        : [],
                     isPicklist: isField && item.type === 'picklist',
                     addressRequired: item.required && ADDRESS_PARTS.every((part) => item.fieldKeys?.[part]),
                     countryOptions: item.type === 'address' ? addressOptions(item, 'country') : undefined,
@@ -378,6 +401,18 @@ export default class ConditionalRecordForm extends LightningElement {
         this.applyValueRules([fieldKey]);
     }
 
+    handleAddressPartChange(event) {
+        const { fieldKey, addressPart } = event.currentTarget.dataset;
+        const field = this.formFields.find((item) => item.key === fieldKey);
+        const key = field?.fieldKeys?.[addressPart];
+        if (!key || event.currentTarget.disabled) return;
+
+        event.currentTarget.setCustomValidity('');
+        this.setClientValue(key, event.detail?.value ?? event.target.value ?? '');
+        this._ruleClearedFields.delete(key);
+        this.applyValueRules([key]);
+    }
+
     handleLookupChange(event) {
         const { fieldKey, recordId } = event.detail || {};
         if (!fieldKey) return;
@@ -466,7 +501,9 @@ export default class ConditionalRecordForm extends LightningElement {
         const { messages } = getInputText(field, this._config.inputText);
         if (field.type === 'lookup') return input.reportValidity();
         if (field.type === 'address') {
-            const errors = ADDRESS_PARTS.map((part) => {
+            const hideCountry = hidesAddressCountry(field);
+            const parts = hideCountry ? Object.keys(ADDRESS_LABELS) : ADDRESS_PARTS;
+            const errors = parts.map((part) => {
                 const key = addressError(field, part, values[field.fieldKeys?.[part]]);
                 const label = field[`${part}Label`] || {
                     street: 'street', city: 'city', province: 'state or province',
@@ -474,6 +511,15 @@ export default class ConditionalRecordForm extends LightningElement {
                 }[part];
                 return [part, key ? formatMessage(messages[key], { part: label }) : ''];
             });
+            if (hideCountry) {
+                const controls = [...input.querySelectorAll('[data-address-part]')];
+                const messagesByPart = new Map(errors);
+                return controls.reduce((valid, control) => {
+                    const message = messagesByPart.get(control.dataset.addressPart);
+                    control.setCustomValidity(message);
+                    return (control.reportValidity() !== false && !message) && valid;
+                }, true);
+            }
             errors.forEach(([part, message]) => input.setCustomValidityForField?.(message, part));
             const nativeValid = input.reportValidity?.();
             const valid = !errors.some(([, message]) => message) && nativeValid !== false;
@@ -501,7 +547,7 @@ export default class ConditionalRecordForm extends LightningElement {
         const currentValues = this.values;
         const assignments = this.sectionAssignments;
         const visibleFields = this.formFields.filter((field) => this.isItemVisible(field, assignments));
-        const inputs = new Map([...this.template.querySelectorAll('[data-field-key]')]
+        const inputs = new Map([...this.template.querySelectorAll('[data-field-key]:not([data-address-part])')]
             .map((input) => [input.dataset.fieldKey, input]));
         const invalidFields = visibleFields.filter((field) => {
             const input = inputs.get(field.key);
@@ -514,7 +560,9 @@ export default class ConditionalRecordForm extends LightningElement {
                 .map((section) => `section-${this._config.items.indexOf(section)}`));
             this.collapsedSections = this.collapsedSections.filter((key) => !invalidSections.has(key));
             await Promise.resolve();
-            inputs.get(invalidFields[0].key)?.focus?.();
+            const invalidInput = inputs.get(invalidFields[0].key);
+            const focusTarget = invalidInput?.querySelector('[data-address-part]:not([disabled])') || invalidInput;
+            focusTarget?.focus?.();
             return;
         }
 
@@ -526,13 +574,24 @@ export default class ConditionalRecordForm extends LightningElement {
                         field.fieldKeys[part], addressOptions(field, part)?.length ? 'picklist' : part
                     ])
                 : [[field.key, field.type || 'text']]));
+        const skippedCountries = new Set();
+        this.persistedFields.filter(hidesAddressCountry).forEach((field) => {
+            const { province, country } = field.fieldKeys;
+            if (!String(currentValues[province] ?? '').trim() ||
+                (this._config.clearWhenHidden && !visibleFields.includes(field))) {
+                skippedCountries.add(country);
+            } else if (!String(currentValues[country] ?? '').trim()) {
+                currentValues[country] = addressCountryDefault(field);
+            }
+        });
         const visibleFieldKeys = new Set(valueTypes.keys());
         const persistedKeys = new Set(this.persistedFields.flatMap((field) => this.getFieldKeys(field)));
         this._ruleClearedFields.forEach((key) => {
             if (persistedKeys.has(key)) visibleFieldKeys.add(key);
         });
         const fields = [...visibleFieldKeys]
-            .filter((fieldKey) => Object.prototype.hasOwnProperty.call(currentValues, fieldKey))
+            .filter((fieldKey) => !skippedCountries.has(fieldKey) &&
+                Object.prototype.hasOwnProperty.call(currentValues, fieldKey))
             .map((key) => ({
                 key,
                 valueJson: JSON.stringify(normalizeValue(valueTypes.get(key), currentValues[key]))
@@ -542,7 +601,9 @@ export default class ConditionalRecordForm extends LightningElement {
                 .filter((field) => !this.isItemVisible(field, assignments))
                 .flatMap((field) => this.getFieldKeys(field))
                 .forEach((key) => {
-                    if (!fields.some((fieldValue) => fieldValue.key === key)) fields.push({ key, valueJson: 'null' });
+                    if (!skippedCountries.has(key) && !fields.some((fieldValue) => fieldValue.key === key)) {
+                        fields.push({ key, valueJson: 'null' });
+                    }
                 });
         }
 

@@ -315,7 +315,7 @@ describe('c-conditional-record-form', () => {
         expect(findField(element, 'lightning-input', DETAILS)).toBeDefined();
     });
 
-    it('defaults new US addresses to United States and submits its stored value', async () => {
+    it('hides the default country and submits it only when state is populated', async () => {
         const country = `${FORM_KEY}.Country`;
         const province = `${FORM_KEY}.Province`;
         const element = createComponent();
@@ -326,13 +326,20 @@ describe('c-conditional-record-form', () => {
                 fieldKeys: { country, province }
             }]
         });
-        const address = element.shadowRoot.querySelector('lightning-input-address');
-        expect(address.countryOptions).toEqual([{ label: 'United States', value: 'United States' }]);
-        expect(address.provinceOptions).toHaveLength(51);
-        expect(address.provinceOptions).toContainEqual({ label: 'District of Columbia', value: 'District of Columbia' });
-        expect(address.country).toBe('United States');
-        expect(address.province).toBe('');
-        expect(await element.submit()).toEqual([{ key: country, valueJson: '"United States"' }]);
+        const state = element.shadowRoot.querySelector('[data-address-part="province"]');
+        expect(element.shadowRoot.querySelector('[data-address-part="country"]')).toBeNull();
+        expect(element.shadowRoot.querySelector('lightning-input-address')).toBeNull();
+        expect(state.options).toHaveLength(51);
+        expect(await element.submit()).toEqual([]);
+
+        state.dispatchEvent(new CustomEvent('change', { detail: { value: 'Florida' } }));
+        expect(await element.submit()).toEqual(expect.arrayContaining([
+            { key: province, valueJson: '"Florida"' },
+            { key: country, valueJson: '"United States"' }
+        ]));
+
+        state.dispatchEvent(new CustomEvent('change', { detail: { value: '' } }));
+        expect(await element.submit()).toEqual([{ key: province, valueJson: '""' }]);
     });
 
     it('preserves an existing country and uses custom country and state options', async () => {
@@ -351,11 +358,55 @@ describe('c-conditional-record-form', () => {
                 provinceOptions: [{ label: 'Ontario', value: 'ON' }]
             }]
         });
-        const address = element.shadowRoot.querySelector('lightning-input-address');
-        expect(address.country).toBe('CA');
-        expect(address.provinceOptions).toEqual([{ label: 'Ontario', value: 'ON' }]);
+        const state = element.shadowRoot.querySelector('[data-address-part="province"]');
+        expect(element.shadowRoot.querySelector('[data-address-part="country"]')).toBeNull();
+        expect(state.options).toEqual([{ label: 'Ontario', value: 'ON' }]);
         expect(await element.submit()).toEqual([
             { key: province, valueJson: '"ON"' }, { key: country, valueJson: '"CA"' }
+        ]);
+    });
+
+    it('omits both countries when the mirrored state is cleared before Apex save', async () => {
+        const billingState = `${FORM_KEY}.BillingState`;
+        const billingCountry = `${FORM_KEY}.BillingCountry`;
+        const mailingState = `${FORM_KEY}.MailingState`;
+        const mailingCountry = `${FORM_KEY}.MailingCountry`;
+        const same = `${FORM_KEY}.Same`;
+        const when = { field: same, operator: 'equals', value: true };
+        const element = createComponent();
+        await emitConfig({
+            formKey: FORM_KEY,
+            items: [
+                { key: 'billing', type: 'address', addressPreset: 'US', fieldKeys: { province: billingState, country: billingCountry } },
+                { key: same, type: 'checkbox', clientOnly: true },
+                { key: 'mailing', type: 'address', addressPreset: 'US', fieldKeys: { province: mailingState, country: mailingCountry }, readOnlyWhen: when }
+            ],
+            valueRules: [{
+                when,
+                actions: [
+                    { type: 'copy', from: billingState, to: mailingState, overwrite: true },
+                    { type: 'copy', from: billingCountry, to: mailingCountry, overwrite: true }
+                ]
+            }]
+        });
+        const toggle = findField(element, 'lightning-input', same);
+        toggle.checked = true;
+        toggle.dispatchEvent(new CustomEvent('change'));
+        const [billing, mailing] = element.shadowRoot.querySelectorAll('[data-address-part="province"]');
+        billing.dispatchEvent(new CustomEvent('change', { detail: { value: 'Florida' } }));
+        await element.submit();
+        expect(mailing.disabled).toBe(true);
+        expect(mailing.value).toBe('Florida');
+        expect(JSON.parse(saveRecord.mock.calls[0][0].payloadJson).fields).toEqual(expect.arrayContaining([
+            { key: billingCountry, valueJson: '"United States"' },
+            { key: mailingCountry, valueJson: '"United States"' }
+        ]));
+
+        billing.dispatchEvent(new CustomEvent('change', { detail: { value: '' } }));
+        await element.submit();
+        expect(mailing.value).toBe('');
+        expect(JSON.parse(saveRecord.mock.calls[1][0].payloadJson).fields).toEqual([
+            { key: billingState, valueJson: '""' }, { key: mailingState, valueJson: '""' }
         ]);
     });
 
