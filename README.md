@@ -119,6 +119,55 @@ and default country to the values accepted by your org. Include existing
 stored values in the configured lists if users need to keep those selections
 when editing a record.
 
+## Client-only fields
+
+In the config builder, select **Client only (exclude from load and save)** on
+a field. For a hand-written provider, add the following item to `items` and
+omit its key from `getFieldApiNames()`.
+
+```json
+{
+  "kind": "field",
+  "key": "ApplicationForm.sameAsBilling",
+  "label": "Mailing address is the same as billing address",
+  "type": "checkbox",
+  "defaultValue": false,
+  "clientOnly": true
+}
+```
+
+Client-only fields can drive visibility and value rules and can be validated.
+Their values stay in the component, including when a rule clears them or the
+form uses event submission. Use distinct keys for client-only and persisted
+fields. Salesforce lookups require a server mapping.
+
+The Account Intake sample copies each of the five Billing Address parts to
+its Mailing Address counterpart. The sample maps Mailing Address to Account's
+standard Shipping Address fields. Add a value rule like the following and
+repeat the copy action for each address part.
+
+```json
+{
+  "when": { "field": "ApplicationForm.sameAsBilling", "operator": "equals", "value": true },
+  "actions": [
+    {
+      "type": "copy",
+      "from": "ApplicationForm.billingStreet",
+      "to": "ApplicationForm.mailingStreet",
+      "overwrite": true,
+      "clearIfMissing": true
+    }
+  ]
+}
+```
+
+Set the Mailing Address item's `readOnlyWhen` to the same condition to prevent
+manual edits while it mirrors Billing. Checking the box replaces existing
+Mailing values, including clearing any part that is missing in Billing.
+Changes to Billing continue to copy while checked. Unchecking keeps the last
+copied values and enables editing. The checkbox starts unchecked on each
+fresh form load.
+
 ## Input formatting and validation
 
 Default placeholders and field validation messages live in

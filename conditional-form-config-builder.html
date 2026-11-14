@@ -169,6 +169,7 @@
         body += `${input(item.type === 'address' ? 'Address group key' : 'Logical field key', `${base}.key`, item.key || '')}${input('Label', `${base}.label`, item.label || '')}`;
         body += `${select('Input type', `${base}.type`, item.type || 'text', FIELD_TYPES.map(t=>[t,t]))}`;
         body += `${input('Salesforce field API name (Apex provider only)', `${base}.serverApiName`, item.serverApiName || '')}${input('Section key (optional)', `${base}.sectionKey`, item.sectionKey || '')}`;
+        if (item.type !== 'lookup') body += checkbox('Client only (exclude from load and save)', `${base}.clientOnly`, item.clientOnly);
         body += input('Default value', `${base}.defaultValue`, item.defaultValue ?? '');
         if (['text','email','tel','url','password','search'].includes(item.type)) {
           body += input('Minimum length', `${base}.minLength`, item.minLength ?? '', 'number', 'min="0"');
@@ -218,6 +219,9 @@
         body += `${input('Unique item key',`${base}.key`,item.key || '')}${select('Column span',`${base}.span`,item.span || 1,[['1','1 column'],['2','2 columns']])}`;
       }
       body += `</div><div class="condition-box">${conditionsEditor(item,`${base}.visibleWhen`,ensureConditions(item,'visibleWhen'),item.visibleWhenLogic || 'AND')}</div>`;
+      if (kind === 'field' && item.type === 'address') {
+        body += `<div class="condition-box"><strong>Read-only address</strong>${conditionsEditor(item,`${base}.readOnlyWhen`,ensureConditions(item,'readOnlyWhen'),item.readOnlyWhenLogic || 'AND')}</div>`;
+      }
       return `<article class="item-card">${header}${body}</article>`;
     }
     function actionCard(action, ruleIndex, actionIndex) {
@@ -226,7 +230,7 @@
       if ((action.type || 'copy') === 'copy') {
         fields += input('Copy from logical field key',`${path}.from`,action.from || '');
         fields += input('Copy to logical field key',`${path}.to`,action.to || '');
-        fields += `<div class="control"><label>Overwrite target</label>${checkbox('Replace target when it already has a value',`${path}.overwrite`,action.overwrite === true)}</div>`;
+        fields += `<div class="control"><label>Copy behavior</label>${checkbox('Replace target when it already has a value',`${path}.overwrite`,action.overwrite === true)}${checkbox('Clear target when the source has no value yet',`${path}.clearIfMissing`,action.clearIfMissing === true)}</div>`;
       } else {
         const names = action.fieldsText ?? (action.fields || []).join(', ');
         fields += textarea('Logical field keys to clear (comma or line separated)',`${path}.fieldsText`,names,'organizationName, organizationTaxId');
@@ -283,6 +287,7 @@
             Object.assign(out,{key:item.type==='address' ? (item.key || '') : qualifyFieldKey(item.key),label:item.label || '',type:item.type || 'text'});
             if(item.sectionKey) out.sectionKey=item.sectionKey;
             if(item.required) out.required=true;
+            if(item.clientOnly && item.type!=='lookup') out.clientOnly=true;
             if(item.placeholder) out.placeholder=item.placeholder;
             const d=parseDefault(String(item.defaultValue ?? ''), item.type); if(d!==undefined) out.defaultValue=d;
             ['pattern','formatter','dateStyle','timeStyle','timezone'].forEach(k=>{if(item[k]) out[k]=item[k];});
@@ -299,6 +304,9 @@
               if(item.defaultCountry?.trim()) out.defaultCountry=item.defaultCountry.trim();
               if(countries.length) out.countryOptions=countries;
               if(provinces.length) out.provinceOptions=provinces;
+              const readOnly=nonEmptyConditions(item.readOnlyWhen);
+              if(readOnly.length) out.readOnlyWhen=readOnly.length===1?readOnly[0]:readOnly;
+              if(readOnly.length>1&&item.readOnlyWhenLogic==='OR') out.readOnlyWhenLogic='OR';
             }
           } else if(item.kind==='text') {
             out.text=item.text || '';
@@ -320,7 +328,7 @@
         valueRules:config.valueRules.map(rule=>{
           const when=nonEmptyConditions(rule.when);
           const actions=(rule.actions||[]).flatMap(action=>{
-            if(action.type==='copy' && action.from && action.to) return [{type:'copy',from:qualifyFieldKey(action.from),to:qualifyFieldKey(action.to),...(action.overwrite?{overwrite:true}:{})}];
+            if(action.type==='copy' && action.from && action.to) return [{type:'copy',from:qualifyFieldKey(action.from),to:qualifyFieldKey(action.to),...(action.overwrite?{overwrite:true}:{}),...(action.clearIfMissing?{clearIfMissing:true}:{})}];
             if(action.type==='clear') {
               const fields=String(action.fieldsText ?? (action.fields||[]).join(',')).split(/[\n,]/).map(x=>x.trim()).filter(Boolean);
               if(fields.length) return [{type:'clear',fields:fields.map(qualifyFieldKey)}];
@@ -344,7 +352,7 @@
     }
     function buildServerMapping() {
       const fields=[];
-      config.items.filter(item=>item.kind==='field').forEach(item=>{
+      config.items.filter(item=>item.kind==='field'&&(!item.clientOnly||item.type==='lookup')).forEach(item=>{
         if(item.type==='address') {
           ['street','city','province','postalCode','country'].forEach(part=>{
             const key=item.fieldKeys?.[part], fieldApiName=item.serverApiNames?.[part];
@@ -405,9 +413,9 @@
       config.items.forEach((item,i)=>{
         if(item.kind==='field'&&!item.key) warnings.push(`Item ${i+1}: enter a logical field key.`);
         if(item.kind==='field'&&item.type==='address'&&!Object.values(item.fieldKeys||{}).some(Boolean)) warnings.push(`Item ${i+1}: enter at least one logical address part key.`);
-        if(item.kind==='field'&&!item.serverApiName&&item.type!=='address') warnings.push(`Item ${i+1}: add its Salesforce API name for the Apex provider mapping.`);
+        if(item.kind==='field'&&(!item.clientOnly||item.type==='lookup')&&!item.serverApiName&&item.type!=='address') warnings.push(`Item ${i+1}: add its Salesforce API name for the Apex provider mapping.`);
         if(item.kind==='field'&&item.type==='lookup'&&!item.serverLookupObjectApiName) warnings.push(`Item ${i+1}: add the related object API name for the Apex provider mapping.`);
-        if(item.kind==='field'&&item.type==='address'&&Object.entries(item.fieldKeys||{}).some(([part,key])=>key&&!item.serverApiNames?.[part])) warnings.push(`Item ${i+1}: complete the Apex API mapping for each configured address key.`);
+        if(item.kind==='field'&&item.type==='address'&&!item.clientOnly&&Object.entries(item.fieldKeys||{}).some(([part,key])=>key&&!item.serverApiNames?.[part])) warnings.push(`Item ${i+1}: complete the Apex API mapping for each configured address key.`);
         (item.visibleWhen||[]).forEach(condition=>{if(condition.kind==='custom'&&!condition.method) warnings.push(`Item ${i+1}: enter an allowlisted evaluator name.`);});
       });
       if(!config.formKey) warnings.push('Enter a form key; it selects the registered Apex provider.');

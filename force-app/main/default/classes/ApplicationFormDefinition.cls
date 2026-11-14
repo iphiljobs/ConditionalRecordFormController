@@ -48,8 +48,22 @@ public class ApplicationFormDefinition implements ConditionalRecordFormDefinitio
                 '{"kind":"field","key":"billingAddress","label":"Billing address","type":"address","addressPreset":"US","fieldKeys":{' +
                     '"street":"ApplicationForm.billingStreet","city":"ApplicationForm.billingCity",' +
                     '"province":"ApplicationForm.billingState","postalCode":"ApplicationForm.billingPostalCode",' +
-                    '"country":"ApplicationForm.billingCountry"}}' +
-            '],"valueRules":[]}';
+                    '"country":"ApplicationForm.billingCountry"}},' +
+                '{"kind":"section","key":"mailingAddress","heading":"Mailing address","columns":1},' +
+                '{"kind":"field","key":"ApplicationForm.sameAsBilling","label":"Mailing address is the same as billing address",' +
+                    '"type":"checkbox","clientOnly":true,"defaultValue":false},' +
+                '{"kind":"field","key":"mailingAddress","label":"Mailing address","type":"address","addressPreset":"US",' +
+                    '"defaultCountry":"","readOnlyWhen":{"field":"ApplicationForm.sameAsBilling","operator":"equals","value":true},' +
+                    '"fieldKeys":{"street":"ApplicationForm.mailingStreet","city":"ApplicationForm.mailingCity",' +
+                    '"province":"ApplicationForm.mailingState","postalCode":"ApplicationForm.mailingPostalCode",' +
+                    '"country":"ApplicationForm.mailingCountry"}}' +
+            '],"valueRules":[{"when":{"field":"ApplicationForm.sameAsBilling","operator":"equals","value":true},"actions":[' +
+                '{"type":"copy","from":"ApplicationForm.billingStreet","to":"ApplicationForm.mailingStreet","overwrite":true,"clearIfMissing":true},' +
+                '{"type":"copy","from":"ApplicationForm.billingCity","to":"ApplicationForm.mailingCity","overwrite":true,"clearIfMissing":true},' +
+                '{"type":"copy","from":"ApplicationForm.billingState","to":"ApplicationForm.mailingState","overwrite":true,"clearIfMissing":true},' +
+                '{"type":"copy","from":"ApplicationForm.billingPostalCode","to":"ApplicationForm.mailingPostalCode","overwrite":true,"clearIfMissing":true},' +
+                '{"type":"copy","from":"ApplicationForm.billingCountry","to":"ApplicationForm.mailingCountry","overwrite":true,"clearIfMissing":true}' +
+            ']}]}';
     }
 
     public Map<String, String> getFieldApiNames() {
@@ -71,7 +85,12 @@ public class ApplicationFormDefinition implements ConditionalRecordFormDefinitio
             'ApplicationForm.billingCity' => 'BillingCity',
             'ApplicationForm.billingState' => 'BillingState',
             'ApplicationForm.billingPostalCode' => 'BillingPostalCode',
-            'ApplicationForm.billingCountry' => 'BillingCountry'
+            'ApplicationForm.billingCountry' => 'BillingCountry',
+            'ApplicationForm.mailingStreet' => 'ShippingStreet',
+            'ApplicationForm.mailingCity' => 'ShippingCity',
+            'ApplicationForm.mailingState' => 'ShippingState',
+            'ApplicationForm.mailingPostalCode' => 'ShippingPostalCode',
+            'ApplicationForm.mailingCountry' => 'ShippingCountry'
         };
     }
 

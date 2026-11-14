@@ -73,8 +73,9 @@ export default class ConditionalRecordForm extends LightningElement {
     }
 
     async loadRecordValues() {
-        if (!this.formKey || !this.effectiveRecordId || !this.formFields.length) return;
-        const fieldKeys = [...new Set(this.formFields.flatMap((field) => this.getFieldKeys(field)))];
+        if (!this.formKey || !this.effectiveRecordId) return;
+        const fieldKeys = [...new Set(this.persistedFields.flatMap((field) => this.getFieldKeys(field)))];
+        if (!fieldKeys.length) return;
         try {
             const data = await loadFormData({
                 formKey: this.formKey,
@@ -116,6 +117,10 @@ export default class ConditionalRecordForm extends LightningElement {
         return this._config.items.filter((item) =>
             item?.key && (item.kind === 'field' || !item.kind)
         );
+    }
+
+    get persistedFields() {
+        return this.formFields.filter((field) => field.clientOnly !== true);
     }
 
     get effectiveRecordId() {
@@ -231,6 +236,10 @@ export default class ConditionalRecordForm extends LightningElement {
                         step: item.step ?? 1
                     }),
                     isLookup: isField && item.type === 'lookup',
+                    readOnly: Boolean(item.readOnlyWhen) && this.conditionsPass({
+                        visibleWhen: item.readOnlyWhen,
+                        visibleWhenLogic: item.readOnlyWhenLogic
+                    }, values),
                     isAddress: isField && item.type === 'address',
                     isPicklist: isField && item.type === 'picklist',
                     addressRequired: item.required && ADDRESS_PARTS.every((part) => item.fieldKeys?.[part]),
@@ -266,6 +275,16 @@ export default class ConditionalRecordForm extends LightningElement {
             const items = Array.isArray(parsed?.items)
                 ? parsed.items
                 : Array.isArray(parsed?.fields) ? parsed.fields : [];
+            const fields = items.filter((item) => item?.key && (item.kind === 'field' || !item.kind));
+            if (fields.some((item) => item.clientOnly === true && item.type === 'lookup')) {
+                throw new Error('Client-only fields cannot use a Salesforce lookup.');
+            }
+            const clientOnlyKeys = new Set(fields.filter((field) => field.clientOnly === true)
+                .flatMap((field) => this.getFieldKeys(field)));
+            if (fields.some((field) => field.clientOnly !== true &&
+                this.getFieldKeys(field).some((key) => clientOnlyKeys.has(key)))) {
+                throw new Error('Client-only and saved fields must use distinct logical field keys.');
+            }
             this._config = {
                 items,
                 clearWhenHidden: Boolean(parsed?.clearWhenHidden),
@@ -335,6 +354,7 @@ export default class ConditionalRecordForm extends LightningElement {
         if (!field) return;
         const input = event.currentTarget;
         if (field.type === 'address') {
+            if (input.readOnly) return;
             const address = event.target;
             const nextValues = { ...this.values };
             ADDRESS_PARTS.forEach((part) => {
@@ -404,7 +424,7 @@ export default class ConditionalRecordForm extends LightningElement {
                         const sourceValue = Object.prototype.hasOwnProperty.call(currentValues, action.from)
                             ? currentValues[action.from]
                             : undefined;
-                        if (sourceValue === undefined) return;
+                        if (sourceValue === undefined && action.clearIfMissing !== true) return;
 
                         const targetValue = currentValues[action.to];
                         const targetIsBlank = targetValue === null || targetValue === undefined ||
@@ -498,14 +518,19 @@ export default class ConditionalRecordForm extends LightningElement {
             return;
         }
 
-        const valueTypes = new Map(visibleFields.flatMap((field) => field.type === 'address'
-            ? ADDRESS_PARTS.filter((part) => field.fieldKeys?.[part])
-                .map((part) => [
-                    field.fieldKeys[part], addressOptions(field, part)?.length ? 'picklist' : part
-                ])
-            : [[field.key, field.type || 'text']]));
+        const valueTypes = new Map(visibleFields
+            .filter((field) => field.clientOnly !== true)
+            .flatMap((field) => field.type === 'address'
+                ? ADDRESS_PARTS.filter((part) => field.fieldKeys?.[part])
+                    .map((part) => [
+                        field.fieldKeys[part], addressOptions(field, part)?.length ? 'picklist' : part
+                    ])
+                : [[field.key, field.type || 'text']]));
         const visibleFieldKeys = new Set(valueTypes.keys());
-        this._ruleClearedFields.forEach((fieldKey) => visibleFieldKeys.add(fieldKey));
+        const persistedKeys = new Set(this.persistedFields.flatMap((field) => this.getFieldKeys(field)));
+        this._ruleClearedFields.forEach((key) => {
+            if (persistedKeys.has(key)) visibleFieldKeys.add(key);
+        });
         const fields = [...visibleFieldKeys]
             .filter((fieldKey) => Object.prototype.hasOwnProperty.call(currentValues, fieldKey))
             .map((key) => ({
@@ -513,7 +538,7 @@ export default class ConditionalRecordForm extends LightningElement {
                 valueJson: JSON.stringify(normalizeValue(valueTypes.get(key), currentValues[key]))
             }));
         if (this._config.clearWhenHidden) {
-            this.formFields
+            this.persistedFields
                 .filter((field) => !this.isItemVisible(field, assignments))
                 .flatMap((field) => this.getFieldKeys(field))
                 .forEach((key) => {

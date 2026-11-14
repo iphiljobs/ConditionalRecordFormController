@@ -359,6 +359,92 @@ describe('c-conditional-record-form', () => {
         ]);
     });
 
+    it('mirrors billing while checked and submits only the mapped address values', async () => {
+        const same = `${FORM_KEY}.SameAsBilling`;
+        const billingStreet = `${FORM_KEY}.BillingStreet`;
+        const mailingStreet = `${FORM_KEY}.MailingStreet`;
+        const billingCity = `${FORM_KEY}.BillingCity`;
+        const mailingCity = `${FORM_KEY}.MailingCity`;
+        const when = { field: same, operator: 'equals', value: true };
+        const element = createComponent();
+        await emitConfig({
+            formKey: FORM_KEY, submissionMode: 'event',
+            items: [
+                { key: 'billing', label: 'Billing', type: 'address', fieldKeys: { street: billingStreet, city: billingCity } },
+                { key: same, label: 'Same as billing', type: 'checkbox', clientOnly: true, defaultValue: false },
+                { key: 'mailing', label: 'Mailing', type: 'address', fieldKeys: { street: mailingStreet, city: mailingCity }, readOnlyWhen: when }
+            ],
+            valueRules: [{
+                when,
+                actions: [[billingStreet, mailingStreet], [billingCity, mailingCity]].map(([from, to]) =>
+                    ({ type: 'copy', from, to, overwrite: true, clearIfMissing: true }))
+            }]
+        });
+        const toggle = findField(element, 'lightning-input', same);
+        const [billing, mailing] = element.shadowRoot.querySelectorAll('lightning-input-address');
+        const changeAddress = (address, parts) => {
+            Object.assign(address, parts);
+            address.dispatchEvent(new CustomEvent('change'));
+        };
+        const toggleMirror = async (checked) => {
+            toggle.checked = checked;
+            toggle.dispatchEvent(new CustomEvent('change'));
+            await flushPromises();
+        };
+
+        changeAddress(mailing, { street: 'Old address', city: 'Old city' });
+        await flushPromises();
+        await toggleMirror(true);
+        expect(mailing.street).toBe('');
+        expect(mailing.city).toBe('');
+        expect(mailing.readOnly).toBe(true);
+
+        changeAddress(billing, { street: 'New address', city: 'Tampa' });
+        await flushPromises();
+        expect(mailing.street).toBe('New address');
+        expect(mailing.city).toBe('Tampa');
+        expect(await element.submit()).toEqual([
+            { key: billingStreet, valueJson: '"New address"' },
+            { key: billingCity, valueJson: '"Tampa"' },
+            { key: mailingStreet, valueJson: '"New address"' },
+            { key: mailingCity, valueJson: '"Tampa"' }
+        ]);
+
+        await toggleMirror(false);
+        expect(mailing.readOnly).toBe(false);
+        changeAddress(billing, { street: 'Another address', city: 'Orlando' });
+        await flushPromises();
+        expect(mailing.street).toBe('New address');
+        expect(mailing.city).toBe('Tampa');
+    });
+
+    it('excludes client-only fields from record loading and hidden or rule-cleared save paths', async () => {
+        const clientKey = `${FORM_KEY}.Local`;
+        const localStreet = `${FORM_KEY}.LocalStreet`;
+        const element = createComponent({ recordId: '001000000000001AAA' });
+        await emitConfig({
+            formKey: FORM_KEY, clearWhenHidden: true,
+            items: [
+                { key: SOURCE, label: 'Source', type: 'text' },
+                {
+                    key: clientKey, label: 'Local', type: 'text', clientOnly: true, defaultValue: 'local',
+                    visibleWhen: { field: SOURCE, operator: 'isBlank' }
+                },
+                { key: 'localAddress', label: 'Local address', type: 'address', clientOnly: true, fieldKeys: { street: localStreet } }
+            ],
+            valueRules: [{
+                when: { field: SOURCE, operator: 'isNotBlank' },
+                actions: [{ type: 'clear', fields: [clientKey, localStreet] }]
+            }]
+        });
+        expect(loadFormData).toHaveBeenCalledWith(expect.objectContaining({ fieldKeys: [SOURCE] }));
+        changeValue(element, 'lightning-input', SOURCE, 'Save this');
+        await element.submit();
+        expect(JSON.parse(saveRecord.mock.calls[0][0].payloadJson).fields).toEqual([
+            { key: SOURCE, valueJson: '"Save this"' }
+        ]);
+    });
+
     it('rejects configuration for a different form key', async () => {
         const element = createComponent();
         await emitConfig({ ...FORM_CONFIG, formKey: 'AnotherForm' });
