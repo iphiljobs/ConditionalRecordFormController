@@ -65,6 +65,60 @@ The browser receives JSON like this from `getFormConfig`. It contains no Salesfo
 
 In the provider's `getFieldApiNames()`, map `ApplicationForm.applicantType` and `ApplicationForm.organizationName` to their actual Salesforce field API names. Those names remain in Apex source and are never returned in the config or `formsubmit` event.
 
+## Input formatting and validation
+
+Default placeholders and field validation messages live in
+[`conditionalRecordFormInput.js`](force-app/main/default/lwc/conditionalRecordFormInput/conditionalRecordFormInput.js).
+Use the **Input text overrides (JSON)** box in the config builder or add the
+same object as the top-level `inputText` property in a provider's `getConfigJson()`.
+
+```json
+{
+  "placeholders": {
+    "search": "Find by keyword",
+    "address": { "postalCode": "Postal or ZIP code" }
+  },
+  "help": { "datetime": "Choose a date and time for the appointment." },
+  "messages": {
+    "all": { "required": "This field is required." },
+    "email": { "typeMismatch": "Enter a valid email address." },
+    "lookup": { "lookupRequired": "Select an account from the results." }
+  },
+  "fields": {
+    "ApplicationForm.email": {
+      "placeholder": "you@example.com",
+      "messages": { "required": "Enter your email address." }
+    }
+  }
+}
+```
+
+Field overrides take precedence over type and global overrides. Existing item
+`placeholder` and `fieldLevelHelp` values remain supported. Address placeholders
+use an object with `street`, `city`, `province`, `postalCode`, and `country`
+keys. Date/time controls use Salesforce locale formatting. Date-time fields can
+use help text and checkboxes use a visible label.
+
+| Input | Formatting and validation |
+| --- | --- |
+| Text, search, email, phone (`tel`), URL, password | Optional `minLength`, `maxLength`, and a Lightning-supported `pattern`. Email uses the native format check. URLs require HTTP or HTTPS. Phone allows international punctuation and extensions. |
+| Number | Optional `min`, `max`, `step`, and `formatter` (`decimal`, `currency`, `percent`, or `percent-fixed`). Use `percent-fixed` when the displayed percentage and stored number should use the same scale. |
+| Date, time, date-time | Optional `min` and `max`. Set `dateStyle` or `timeStyle` to `short`, `medium`, or `long` where supported. Date-time also accepts an IANA `timezone` for display. |
+| Checkbox | Uses a Boolean. A required checkbox must be checked. |
+| Picklist, lookup | Picklist values must match a configured option. Lookup values must be valid Salesforce ID shapes. Users select a lookup result or clear the search text. |
+| Address | Required checks apply to mapped address parts. Configured country and province options are validated against their respective lists. |
+
+Message keys follow the defaults module. Length and range messages accept
+`{minLength}`, `{maxLength}`, `{min}`, `{max}`, or `{step}` where applicable.
+Address messages accept `{part}`.
+
+Before submission, the form trims surrounding whitespace from ordinary text,
+preserves password whitespace and configured selection values, normalizes street
+line endings, and serializes valid date-time values in UTC. Input and result
+labels use Lightning text bindings. Continue to enforce data, field access,
+and record validation in Apex. A password-style field masks text on screen and
+should only be mapped to data that the form is authorized to read and write.
+
 ## Supported configuration
 
 - Ordered fields, text blocks, section headings and descriptions, and spacers.

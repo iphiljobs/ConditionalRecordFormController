@@ -4,6 +4,7 @@ import getFormConfig from '@salesforce/apex/ConditionalRecordFormController.getF
 import loadFormData from '@salesforce/apex/ConditionalRecordFormController.loadFormData';
 import saveRecord from '@salesforce/apex/ConditionalRecordFormController.saveRecord';
 import Toast from 'lightning/toast';
+import { addressError, fieldError, normalizeValue } from 'c/conditionalRecordFormInput';
 
 jest.mock('@salesforce/apex/ConditionalRecordFormController.getFormConfig', () => {
     const { createApexTestWireAdapter } = require('@salesforce/sfdx-lwc-jest');
@@ -190,6 +191,60 @@ describe('c-conditional-record-form', () => {
         expect(errorHandler).toHaveBeenCalled();
     });
 
+    it('shows configured field copy and blocks an unsafe URL before event submission', async () => {
+        const urlKey = `${FORM_KEY}.Url`;
+        const element = createComponent();
+        const submitted = jest.fn();
+        element.addEventListener('formsubmit', submitted);
+        await emitConfig({
+            formKey: FORM_KEY,
+            submissionMode: 'event',
+            inputText: {
+                placeholders: { url: 'https://website.example' },
+                fields: { [urlKey]: { messages: { typeMismatch: 'Use a web URL.' } } }
+            },
+            items: [{ key: urlKey, label: 'Website', type: 'url' }]
+        });
+        const input = findField(element, 'lightning-input', urlKey);
+        input.setCustomValidity = jest.fn();
+        expect(input.placeholder).toBe('https://website.example');
+
+        changeValue(element, 'lightning-input', urlKey, 'javascript:alert(1)');
+        await element.submit();
+        expect(input.setCustomValidity).toHaveBeenLastCalledWith('Use a web URL.');
+        expect(submitted).not.toHaveBeenCalled();
+
+        changeValue(element, 'lightning-input', urlKey, ' https://example.com ');
+        await element.submit();
+        expect(input.setCustomValidity).toHaveBeenLastCalledWith('');
+        expect(submitted.mock.calls[0][0].detail.fields).toEqual([
+            { key: urlKey, valueJson: '"https://example.com"' }
+        ]);
+    });
+
+    it('reports a configured error for each incomplete mapped address part', async () => {
+        const element = createComponent();
+        await emitConfig({
+            formKey: FORM_KEY,
+            inputText: {
+                placeholders: { address: { city: 'Enter your locality' } },
+                messages: { address: { addressRequired: 'Add the {part}.' } }
+            },
+            items: [{
+                key: 'address', label: 'Address', type: 'address', required: true,
+                fieldKeys: { city: `${FORM_KEY}.City` }
+            }]
+        });
+        const input = element.shadowRoot.querySelector('lightning-input-address');
+        input.setCustomValidityForField = jest.fn();
+        expect(input.cityPlaceholder).toBe('Enter your locality');
+
+        await element.submit();
+        expect(input.setCustomValidityForField).toHaveBeenCalledWith('Add the city.', 'city');
+        expect(input.setCustomValidityForField).toHaveBeenCalledWith('', 'street');
+        expect(saveRecord).not.toHaveBeenCalled();
+    });
+
     it('rejects configuration for a different form key', async () => {
         const element = createComponent();
         await emitConfig({ ...FORM_CONFIG, formKey: 'AnotherForm' });
@@ -203,5 +258,35 @@ describe('c-conditional-record-form', () => {
             expect.anything()
         );
         expect(element.shadowRoot.querySelectorAll('lightning-input')).toHaveLength(0);
+    });
+});
+
+
+describe('input validation and normalization', () => {
+    it.each([
+        [{ type: 'text', required: true }, '   ', 'required'],
+        [{ type: 'search' }, 'bad\u0000term', 'invalidCharacters'],
+        [{ type: 'email' }, 'name.example.com', 'typeMismatch'],
+        [{ type: 'tel' }, '+91 555-1234 ext. 2', ''],
+        [{ type: 'tel' }, 'unknown', 'badInput'],
+        [{ type: 'number' }, '1e999', 'badInput'],
+        [{ type: 'date' }, '2026-02-29', 'badInput'],
+        [{ type: 'time' }, '24:00', 'badInput'],
+        [{ type: 'datetime' }, '2026-11-13T13:00:00-05:00', ''],
+        [{ type: 'checkbox', required: true }, false, 'required'],
+        [{ type: 'password', minLength: 4 }, '  x ', ''],
+        [{ type: 'picklist', options: [{ value: '01' }] }, '1', 'invalidOption'],
+        [{ type: 'lookup' }, 'wrong', 'lookupInvalid']
+    ])('validates %j with value %p', (field, value, expected) => {
+        expect(fieldError(field, value)).toBe(expected);
+    });
+
+    it('preserves password whitespace, normalizes street line endings and converts offsets to UTC', () => {
+        expect(normalizeValue('password', '  x ')).toBe('  x ');
+        expect(normalizeValue('street', ' Main St\r\nApt 2 ')).toBe('Main St\nApt 2');
+        expect(normalizeValue('datetime', '2026-11-13T13:00:00-05:00')).toBe('2026-11-13T18:00:00.000Z');
+        expect(addressError({
+            fieldKeys: { country: 'Test.Country' }, countryOptions: [{ value: 'CA' }]
+        }, 'country', 'US')).toBe('addressOption');
     });
 });

@@ -156,6 +156,20 @@ describe('c-conditional-record-lookup', () => {
         expect(element.shadowRoot.querySelector('.suggestion').textContent).toBe('New result');
     });
 
+    it('trims lookup queries and reports configured errors for unselected terms', async () => {
+        searchLookup.mockResolvedValue([]);
+        const element = createComponent({ inputMessages: { lookupUnselected: 'Choose a result.' } });
+        const input = element.shadowRoot.querySelector('lightning-input');
+        input.setCustomValidity = jest.fn();
+
+        search(element, '  Acme  ');
+        await flushPromises();
+
+        expect(searchLookup).toHaveBeenCalledWith(expect.objectContaining({ searchTerm: 'Acme' }));
+        expect(element.reportValidity()).toBe(false);
+        expect(input.setCustomValidity).toHaveBeenLastCalledWith('Choose a result.');
+    });
+
     it('reports required-field validity through the underlying input', () => {
         const element = createComponent({ required: true });
         const input = element.shadowRoot.querySelector('lightning-input');

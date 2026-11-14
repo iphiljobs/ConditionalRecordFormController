@@ -4,6 +4,9 @@ import getFormConfig from '@salesforce/apex/ConditionalRecordFormController.getF
 import saveRecord from '@salesforce/apex/ConditionalRecordFormController.saveRecord';
 import loadFormData from '@salesforce/apex/ConditionalRecordFormController.loadFormData';
 import Toast from 'lightning/toast';
+import {
+    ADDRESS_PARTS, INPUT_TYPES, addressError, addressOptions, fieldError, formatMessage, getInputText, normalizeValue
+} from 'c/conditionalRecordFormInput';
 
 const OPERATORS = new Set([
     'equals',
@@ -16,12 +19,9 @@ const OPERATORS = new Set([
     'lessThan'
 ]);
 
-const INPUT_TYPES = new Set([
-    'text', 'email', 'tel', 'number', 'date', 'time', 'datetime',
-    'checkbox', 'url', 'password', 'search'
-]);
-
-const ADDRESS_PARTS = ['street', 'city', 'province', 'postalCode', 'country'];
+const DATE_STYLES = new Set(['short', 'medium', 'long']);
+const TIME_STYLES = new Set(['short', 'medium', 'long']);
+const NUMBER_FORMATS = new Set(['decimal', 'currency', 'percent', 'percent-fixed']);
 
 export default class ConditionalRecordForm extends LightningElement {
     _formKey;
@@ -42,6 +42,7 @@ export default class ConditionalRecordForm extends LightningElement {
         this._configLoaded = false;
         this._config = { items: [], clearWhenHidden: false, columns: 1, valueRules: [] };
         this.clientFieldValues = [];
+        this._invalidAddresses.clear();
         this._createdRecordId = undefined;
     }
 
@@ -51,6 +52,7 @@ export default class ConditionalRecordForm extends LightningElement {
     submissionMode = 'apex';
 
     clientFieldValues = [];
+    _invalidAddresses = new Set();
     isSubmitting = false;
     _config = { items: [], clearWhenHidden: false, columns: 1, valueRules: [] };
     _createdRecordId;
@@ -59,9 +61,8 @@ export default class ConditionalRecordForm extends LightningElement {
     @wire(getFormConfig, { formKey: '$formKey' })
     wiredFormConfig({ data, error }) {
         if (data) {
-            this.parseConfig(data);
-            this._configLoaded = true;
-            this.loadRecordValues();
+            this._configLoaded = this.parseConfig(data);
+            if (this._configLoaded) this.loadRecordValues();
         } else if (error) {
             this._configLoaded = false;
             this._config = { items: [], clearWhenHidden: false, columns: 1, valueRules: [] };
@@ -121,6 +122,7 @@ export default class ConditionalRecordForm extends LightningElement {
 
     get visibleItems() {
         let activeColumns = this._config.columns;
+        const values = this.values;
         return this._config.items
             .map((item, index) => {
                 const kind = item.kind || (item.key ? 'field' : 'text');
@@ -132,12 +134,16 @@ export default class ConditionalRecordForm extends LightningElement {
                 const itemColumns = activeColumns;
                 const isField = kind === 'field' && Boolean(item.key);
                 const isCheckbox = isField && item.type === 'checkbox';
+                const inputText = isField ? getInputText(item, this._config.inputText) : {};
+                const storedValue = Object.prototype.hasOwnProperty.call(values, item.key)
+                    ? values[item.key] : item.defaultValue;
                 const isSpacer = kind === 'spacer';
                 const fullWidth = kind === 'section' || kind === 'text' ||
                     (isField && (item.type === 'address' || item.fullWidth === true || item.span === 2)) ||
                     (isSpacer && item.span === 2) || itemColumns === 1;
                 return {
                     ...item,
+                    ...inputText,
                     kind,
                     itemColumns,
                     renderKey: item.key || `item-${index}`,
@@ -150,30 +156,39 @@ export default class ConditionalRecordForm extends LightningElement {
                     isText: kind === 'text',
                     isField,
                     heading: item.heading || item.label || item.title,
-                    type: item.type === 'picklist' ? 'text' : (INPUT_TYPES.has(item.type) ? item.type : 'text'),
+                    type: INPUT_TYPES.has(item.type) ? item.type : 'text',
+                    dateStyle: DATE_STYLES.has(item.dateStyle) ? item.dateStyle : undefined,
+                    timeStyle: TIME_STYLES.has(item.timeStyle) ? item.timeStyle : undefined,
+                    formatter: NUMBER_FORMATS.has(item.formatter) ? item.formatter : undefined,
+                    requiredMessage: inputText.messages?.required,
+                    badInputMessage: inputText.messages?.badInput,
+                    typeMismatchMessage: inputText.messages?.typeMismatch,
+                    patternMessage: inputText.messages?.patternMismatch,
+                    tooShortMessage: inputText.messages && formatMessage(inputText.messages.tooShort, item),
+                    tooLongMessage: inputText.messages && formatMessage(inputText.messages.tooLong, item),
+                    underflowMessage: inputText.messages && formatMessage(inputText.messages.rangeUnderflow, item),
+                    overflowMessage: inputText.messages && formatMessage(inputText.messages.rangeOverflow, item),
+                    stepMessage: inputText.messages && formatMessage(inputText.messages.stepMismatch, {
+                        step: item.step ?? 1
+                    }),
                     isLookup: isField && item.type === 'lookup',
                     isAddress: isField && item.type === 'address',
                     isPicklist: isField && item.type === 'picklist',
+                    addressRequired: item.required && ADDRESS_PARTS.every((part) => item.fieldKeys?.[part]),
                     address: {
-                        street: this.values[item.fieldKeys?.street] || '',
-                        city: this.values[item.fieldKeys?.city] || '',
-                        province: this.values[item.fieldKeys?.province] || '',
-                        postalCode: this.values[item.fieldKeys?.postalCode] || '',
-                        country: this.values[item.fieldKeys?.country] || ''
+                        street: values[item.fieldKeys?.street] || '',
+                        city: values[item.fieldKeys?.city] || '',
+                        province: values[item.fieldKeys?.province] || '',
+                        postalCode: values[item.fieldKeys?.postalCode] || '',
+                        country: values[item.fieldKeys?.country] || ''
                     },
                     streetLabel: item.streetLabel || 'Street',
                     cityLabel: item.cityLabel || 'City',
                     provinceLabel: item.provinceLabel || 'State/Province',
                     postalCodeLabel: item.postalCodeLabel || 'Postal Code',
                     countryLabel: item.countryLabel || 'Country',
-                    value: Object.prototype.hasOwnProperty.call(this.values, item.key)
-                        ? this.values[item.key]
-                        : item.defaultValue,
-                    checked: isCheckbox
-                        ? Boolean(Object.prototype.hasOwnProperty.call(this.values, item.key)
-                            ? this.values[item.key]
-                            : item.defaultValue)
-                        : false,
+                    value: storedValue,
+                    checked: isCheckbox && normalizeValue('checkbox', storedValue) === true,
                     options: Array.isArray(item.options) ? item.options : []
                 };
             })
@@ -196,9 +211,11 @@ export default class ConditionalRecordForm extends LightningElement {
                 columns: Number(parsed?.columns) === 2 ? 2 : 1,
                 showSubmitButton: parsed?.showSubmitButton !== false,
                 submissionMode: parsed?.submissionMode === 'event' ? 'event' : 'apex',
+                inputText: parsed?.inputText,
                 valueRules: Array.isArray(parsed?.valueRules) ? parsed.valueRules : []
             };
             this._ruleClearedFields = new Set();
+            this._invalidAddresses.clear();
             this.showSubmitButton = this._config.showSubmitButton;
             this.submissionMode = this._config.submissionMode;
             this.formTitle = parsed?.title || 'Conditional Form';
@@ -213,6 +230,7 @@ export default class ConditionalRecordForm extends LightningElement {
                 }
             });
             this.values = defaults;
+            return true;
         } catch (error) {
             this._config = {
                 items: [],
@@ -223,9 +241,11 @@ export default class ConditionalRecordForm extends LightningElement {
                 valueRules: []
             };
             this._ruleClearedFields = new Set();
+            this._invalidAddresses.clear();
             this.showSubmitButton = true;
             this.submissionMode = 'apex';
             this.showToast('Invalid form configuration', error.message, 'error');
+            return false;
         }
     }
 
@@ -233,7 +253,9 @@ export default class ConditionalRecordForm extends LightningElement {
         const fieldKey = event.currentTarget.dataset.fieldKey;
         if (!fieldKey) return;
         const field = this.formFields.find((item) => item.key === fieldKey);
-        if (field?.type === 'address') {
+        if (!field) return;
+        const input = event.currentTarget;
+        if (field.type === 'address') {
             const address = event.target;
             const nextValues = { ...this.values };
             ADDRESS_PARTS.forEach((part) => {
@@ -241,13 +263,15 @@ export default class ConditionalRecordForm extends LightningElement {
                 if (key) nextValues[key] = address[part] || '';
             });
             this.values = nextValues;
+            if (this._invalidAddresses.has(fieldKey)) this.reportFieldValidity(input, field, nextValues);
             this._ruleClearedFields = new Set(
                 [...this._ruleClearedFields].filter((name) => !Object.values(field.fieldKeys || {}).includes(name))
             );
             this.applyValueRules(Object.values(field.fieldKeys || {}).filter(Boolean));
             return;
         }
-        const value = event.target.type === 'checkbox'
+        input.setCustomValidity?.('');
+        const value = field.type === 'checkbox'
             ? event.target.checked
             : event.detail?.value ?? event.target.value;
         this.setClientValue(fieldKey, value);
@@ -333,35 +357,75 @@ export default class ConditionalRecordForm extends LightningElement {
         this.values = currentValues;
     }
 
+    handleFieldBlur(event) {
+        const input = event.currentTarget;
+        const field = this.formFields.find((item) => item.key === input.dataset.fieldKey);
+        if (field) this.reportFieldValidity(input, field, this.values);
+    }
+
+    reportFieldValidity(input, field, values) {
+        const { messages } = getInputText(field, this._config.inputText);
+        if (field.type === 'lookup') return input.reportValidity();
+        if (field.type === 'address') {
+            const errors = ADDRESS_PARTS.map((part) => {
+                const key = addressError(field, part, values[field.fieldKeys?.[part]]);
+                const label = field[`${part}Label`] || {
+                    street: 'street', city: 'city', province: 'state or province',
+                    postalCode: 'postal code', country: 'country'
+                }[part];
+                return [part, key ? formatMessage(messages[key], { part: label }) : ''];
+            });
+            errors.forEach(([part, message]) => input.setCustomValidityForField?.(message, part));
+            const nativeValid = input.reportValidity?.();
+            const valid = !errors.some(([, message]) => message) && nativeValid !== false;
+            if (valid) this._invalidAddresses.delete(field.key);
+            else this._invalidAddresses.add(field.key);
+            return valid;
+        }
+        const error = input.validity?.badInput || input.validity?.badNumericInput
+            ? 'badInput' : fieldError(field, values[field.key]);
+        const message = error ? formatMessage(messages[error], field) : '';
+        input.setCustomValidity?.(message);
+        const nativeValid = input.reportValidity();
+        return !error && nativeValid !== false;
+    }
+
     async handleSubmit() {
-        const inputs = [...this.template.querySelectorAll('lightning-input, lightning-combobox, c-conditional-record-lookup')];
-        const allValid = inputs.reduce((valid, input) => input.reportValidity() && valid, true);
-        const invalidRequiredAddress = this.formFields.some((field) => {
-            if (field.type !== 'address' || !field.required || !this.isItemVisible(field)) return false;
-            return ADDRESS_PARTS
-                .filter((part) => field.fieldKeys?.[part])
-                .some((part) => !String(this.values[field.fieldKeys[part]] || '').trim());
+        if (this.isSubmitting) return;
+        if (!this.formKey || !this._configLoaded) {
+            this.showToast('Form configuration required', 'Load a valid server-side form configuration.', 'error');
+            return;
+        }
+        // Let an input change and its visibility rules render before reading the controls.
+        await Promise.resolve();
+        if (this.isSubmitting || !this._configLoaded) return;
+        const currentValues = this.values;
+        const visibleFields = this.formFields.filter((field) => this.isItemVisible(field));
+        const inputs = new Map([...this.template.querySelectorAll('[data-field-key]')]
+            .map((input) => [input.dataset.fieldKey, input]));
+        const invalidFields = visibleFields.filter((field) => {
+            const input = inputs.get(field.key);
+            return !input || !this.reportFieldValidity(input, field, currentValues);
         });
-        if (!allValid || invalidRequiredAddress || !this.formKey) {
-            if (invalidRequiredAddress) {
-                this.showToast('Address is incomplete', 'Complete all required address fields before saving.', 'error');
-            }
-            if (!this.formKey) {
-                this.showToast('Form configuration required', 'Set the server-side form key.', 'error');
-            }
+        if (invalidFields.length) {
+            inputs.get(invalidFields[0].key)?.focus?.();
             return;
         }
 
-        const currentValues = this.values;
-        const visibleFieldKeys = new Set(
-            this.formFields
-                .filter((field) => this.isItemVisible(field))
-                .flatMap((field) => this.getFieldKeys(field))
-        );
+        const valueTypes = new Map(visibleFields.flatMap((field) => field.type === 'address'
+            ? ADDRESS_PARTS.filter((part) => field.fieldKeys?.[part])
+                .map((part) => [
+                    field.fieldKeys[part], addressOptions(field, part)?.length ? 'picklist' : part
+                ])
+            : [[field.key, field.type || 'text']]));
+        const visibleFieldKeys = new Set(valueTypes.keys());
         this._ruleClearedFields.forEach((fieldKey) => visibleFieldKeys.add(fieldKey));
         const fields = [...visibleFieldKeys]
             .filter((fieldKey) => Object.prototype.hasOwnProperty.call(currentValues, fieldKey))
-            .map((key) => ({ key, valueJson: JSON.stringify(currentValues[key]) }));
+            .map((key) => ({
+                key,
+                valueJson: JSON.stringify(normalizeValue(valueTypes.get(key), currentValues[key]))
+            }));
         if (this._config.clearWhenHidden) {
             this.formFields
                 .filter((field) => !this.isItemVisible(field))

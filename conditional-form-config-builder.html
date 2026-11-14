@@ -46,6 +46,11 @@
           <div class="control"><label for="title">Form title</label><input id="title" type="text" data-bind="title"></div>
           <div class="control"><label for="submitLabel">Save button label</label><input id="submitLabel" type="text" data-bind="submitLabel"></div>
           <div class="control"><label for="description">Description</label><textarea id="description" data-bind="description"></textarea></div>
+          <div class="control">
+            <label for="inputText">Input text overrides (JSON)</label>
+            <textarea id="inputText" data-bind="inputTextJson" placeholder='{"placeholders":{"search":"Find by keyword"}}'></textarea>
+            <span class="hint">Optional. Set placeholders, validation messages, and help text by type or logical field key. See the README for examples.</span>
+          </div>
           <div class="grid one">
             <div class="control"><label for="columns">Columns</label><select id="columns" data-bind="columns"><option value="1">1 column</option><option value="2">2 columns</option></select></div>
             <label class="check"><input type="checkbox" data-bind="showSubmitButton"> Show built-in Save button</label>
@@ -106,7 +111,7 @@
     const config = {
       formKey: 'ApplicationForm', serverObjectApiName: '', title: 'Conditional Form', description: '', submitLabel: 'Save', columns: 1,
       showSubmitButton: true, submissionMode: 'apex', clearWhenHidden: false,
-      items: [], valueRules: []
+      inputTextJson: '', items: [], valueRules: []
     };
     const itemsRoot = document.getElementById('items');
     const rulesRoot = document.getElementById('rules');
@@ -157,7 +162,17 @@
         body += `${input(item.type === 'address' ? 'Address group key' : 'Logical field key', `${base}.key`, item.key || '')}${input('Label', `${base}.label`, item.label || '')}`;
         body += `${select('Input type', `${base}.type`, item.type || 'text', FIELD_TYPES.map(t=>[t,t]))}`;
         body += `${input('Salesforce field API name (Apex provider only)', `${base}.serverApiName`, item.serverApiName || '')}${input('Section key (optional)', `${base}.sectionKey`, item.sectionKey || '')}`;
-        body += `${input('Placeholder', `${base}.placeholder`, item.placeholder || '')}${input('Default value', `${base}.defaultValue`, item.defaultValue ?? '')}`;
+        body += input('Default value', `${base}.defaultValue`, item.defaultValue ?? '');
+        if (['text','email','tel','url','password','search'].includes(item.type)) {
+          body += input('Minimum length', `${base}.minLength`, item.minLength ?? '', 'number', 'min="0"');
+          body += input('Maximum length', `${base}.maxLength`, item.maxLength ?? '', 'number', 'min="0"');
+          body += input('Validation pattern (optional)', `${base}.pattern`, item.pattern ?? '');
+        }
+        if (item.type === 'number') body += select('Number format', `${base}.formatter`, item.formatter || '', [['','Default'],['decimal','Decimal'],['currency','Currency'],['percent','Percentage (fraction)'],['percent-fixed','Percentage (as entered)']]);
+        const styles = [['','Default'],['short','Short'],['medium','Medium'],['long','Long']];
+        if (['date','datetime'].includes(item.type)) body += select('Date style', `${base}.dateStyle`, item.dateStyle || '', styles);
+        if (['time','datetime'].includes(item.type)) body += select('Time style', `${base}.timeStyle`, item.timeStyle || '', styles);
+        if (item.type === 'datetime') body += input('Time zone (optional)', `${base}.timezone`, item.timezone || '');
         body += `${input('Minimum (optional)', `${base}.min`, item.min ?? '', 'text')}${input('Maximum (optional)', `${base}.max`, item.max ?? '', 'text')}${input('Step (optional)', `${base}.step`, item.step ?? '', 'text')}`;
         body += `<div class="control"><label>Layout</label><div>${checkbox('Required',`${base}.required`,item.required)}${checkbox('Full width',`${base}.fullWidth`,item.fullWidth)}${select('Column span',`${base}.span`,item.span || 1,[['1','1 column'],['2','2 columns']])}</div></div>`;
         if (item.type === 'picklist') body += textarea('Picklist options (label|value per line)',`${base}.optionsText`,item.optionsText ?? optionText(item.options),'Individual|Individual');
@@ -237,11 +252,11 @@
       });
     }
     const qualifyFieldKey = key => key ? `${config.formKey}.${key}` : '';
-    function parseDefault(value) {
+    function parseDefault(value, type) {
       if (value === '') return undefined;
-      if (value === 'true') return true;
-      if (value === 'false') return false;
-      if (/^-?(?:\d+\.?\d*|\.\d+)$/.test(value)) return Number(value);
+      if (type === 'checkbox' && value === 'true') return true;
+      if (type === 'checkbox' && value === 'false') return false;
+      if (type === 'number' && /^-?(?:\d+\.?\d*|\.\d+)$/.test(value)) return Number(value);
       return value;
     }
     function buildConfig() {
@@ -258,8 +273,9 @@
             if(item.sectionKey) out.sectionKey=item.sectionKey;
             if(item.required) out.required=true;
             if(item.placeholder) out.placeholder=item.placeholder;
-            const d=parseDefault(String(item.defaultValue ?? '')); if(d!==undefined) out.defaultValue=d;
-            ['min','max','step'].forEach(k=>{if(item[k]!==''&&item[k]!==undefined) out[k]=Number.isFinite(Number(item[k]))?Number(item[k]):item[k];});
+            const d=parseDefault(String(item.defaultValue ?? ''), item.type); if(d!==undefined) out.defaultValue=d;
+            ['pattern','formatter','dateStyle','timeStyle','timezone'].forEach(k=>{if(item[k]) out[k]=item[k];});
+            ['min','max','step','minLength','maxLength'].forEach(k=>{if(item[k]!==''&&item[k]!==undefined) out[k]=Number.isFinite(Number(item[k]))?Number(item[k]):item[k];});
             if(item.fullWidth) out.fullWidth=true;
             if(Number(item.span)===2) out.span=2;
             if(item.type==='picklist') out.options=parseOptions(item.optionsText ?? optionText(item.options));
@@ -302,6 +318,15 @@
           return {when:when.length===1?when[0]:when,...(when.length>1&&rule.whenLogic==='OR'?{whenLogic:'OR'}:{}),actions};
         }).filter(Boolean)
       };
+      if (config.inputTextJson.trim()) {
+        let inputText;
+        try { inputText = JSON.parse(config.inputTextJson); }
+        catch { throw new Error('Input text overrides must be valid JSON.'); }
+        if (!inputText || typeof inputText !== 'object' || Array.isArray(inputText)) {
+          throw new Error('Input text overrides must be a JSON object.');
+        }
+        result.inputText = inputText;
+      }
       return result;
     }
     function buildServerMapping() {
